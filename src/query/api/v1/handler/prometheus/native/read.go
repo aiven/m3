@@ -24,6 +24,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/m3db/m3/src/cmd/services/m3query/config"
 	"github.com/m3db/m3/src/query/api/v1/handler"
@@ -173,6 +175,17 @@ func (h *PromReadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	renderResultsJSON(w, result, params, h.keepNans)
 }
 
+func shortDur(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = s[:len(s)-2]
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = s[:len(s)-2]
+	}
+	return s
+}
+
 // ServeHTTPWithEngine returns query results from the storage
 func (h *PromReadHandler) ServeHTTPWithEngine(
 	w http.ResponseWriter,
@@ -199,6 +212,8 @@ func (h *PromReadHandler) ServeHTTPWithEngine(
 		return nil, emptyReqParams, &RespError{Err: err, Code: http.StatusBadRequest}
 	}
 
+	params.Query = strings.Replace(params.Query, "$__interval", shortDur(params.Step), -1)
+	params.Query = strings.Replace(params.Query, "$__range", shortDur(params.LookbackDuration), -1)
 	result, err := read(ctx, engine, queryOpts, fetchOpts, h.tagOpts,
 		w, params, h.instrumentOpts)
 	if err != nil {

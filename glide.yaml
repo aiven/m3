@@ -64,7 +64,9 @@ import:
     version: 9f5d223c60793748f04a9d5b4b4eacddfc1f755d
 
   - package: github.com/uber/tchannel-go
-    version: v1.12.0
+    version: 22400d53f9053c30c4a386f43a5c8c77fa44f135
+    repo: ssh://git@github.com/aiven/tchannel-go.git
+    vcs: git
     subpackages:
       - thrift
 
@@ -260,3 +262,8 @@ import:
 
   - package: go.uber.org/config
     version: ^1.3.1
+
+  - package: github.com/pierrec/lz4
+    version: 377214e3044ff9f12d996f3037fb8c3e3ad16b49
+    subpackages:
+      - internal

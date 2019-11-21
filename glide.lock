@@ -132,7 +132,7 @@ imports:
 - name: github.com/ghodss/yaml
   version: 0ca9ea5df5451ffdf184b4428c902747c2c11cd7
 - name: github.com/go-kit/kit
-  version: dc489b75b9cdbf29c739534c2aa777cabb034954
+  version: 150a65a7ec6156b4b640c1fd55f26fd3d475d656
   subpackages:
   - log
   - log/level
@@ -309,6 +309,8 @@ imports:
   version: adf5a7427709b9deb95d29d3fa8a2bf9cfd388f1
 - name: github.com/pelletier/go-toml
   version: 8fe62057ea2d46ce44254c98e84e810044dbe197
+- name: github.com/pierrec/lz4
+  version: 377214e3044ff9f12d996f3037fb8c3e3ad16b49
 - name: github.com/pilosa/pilosa
   version: bc9747cc0f19702d9753de7ea9375d8311dfc706
   subpackages:
@@ -449,7 +451,9 @@ imports:
   - metrics
   - metrics/tally
 - name: github.com/uber/tchannel-go
-  version: 162ecb0dc97845a0c42aae3899651dba111085e5
+  version: 22400d53f9053c30c4a386f43a5c8c77fa44f135
+  repo: ssh://git@github.com/aiven/tchannel-go.git
+  vcs: git
   subpackages:
   - internal/argreader
   - relay
@@ -552,6 +556,7 @@ imports:
   - internal/fastwalk
   - internal/gopathwalk
   - internal/semver
+  - internal/span
 - name: google.golang.org/appengine
   version: 2e4a801b39fc199db615bfca7d0b9f8cd9580599
   subpackages:

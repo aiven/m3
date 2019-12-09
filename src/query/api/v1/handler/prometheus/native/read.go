@@ -219,6 +219,7 @@ func (h *PromReadHandler) ServeHTTPWithEngine(
 	}
 
 	params.Query = strings.Replace(params.Query, "$__interval", shortDur(params.Step), -1)
+	params.Query = strings.Replace(params.Query, "$__range", shortDur(params.LookbackDuration), -1)
 	result, err := read(ctx, engine, opts, fetchOpts, h.tagOpts, w, params, h.instrumentOpts)
 	if err != nil {
 		sp := xopentracing.SpanFromContextOrNoop(ctx)

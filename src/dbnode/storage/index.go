@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Uber Technologies, Inc.
+// Copyright (c) 2020 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -48,6 +48,7 @@ import (
 	m3ninxindex "github.com/m3db/m3/src/m3ninx/index"
 	"github.com/m3db/m3/src/m3ninx/index/segment"
 	"github.com/m3db/m3/src/m3ninx/index/segment/builder"
+	idxpersist "github.com/m3db/m3/src/m3ninx/persist"
 	xclose "github.com/m3db/m3/src/x/close"
 	"github.com/m3db/m3/src/x/context"
 	xerrors "github.com/m3db/m3/src/x/errors"
@@ -764,8 +765,8 @@ func (i *nsIndex) Flush(
 		fulfilled := result.NewShardTimeRangesFromRange(block.StartTime(), block.EndTime(),
 			dbShards(shards).IDs()...)
 		// Add the results to the block
-		results := result.NewIndexBlock(block.StartTime(), immutableSegments,
-			fulfilled)
+		results := result.NewIndexBlockByVolumeType(block.StartTime())
+		results.SetBlock(idxpersist.DefaultIndexVolumeType, result.NewIndexBlock(immutableSegments, fulfilled))
 		if err := block.AddResults(results); err != nil {
 			return err
 		}
@@ -854,6 +855,8 @@ func (i *nsIndex) flushBlock(
 		BlockStart:        indexBlock.StartTime(),
 		FileSetType:       persist.FileSetFlushType,
 		Shards:            allShards,
+		// NB(bodu): By default, we always write to the "default" index volume type.
+		IndexVolumeType: idxpersist.DefaultIndexVolumeType,
 	})
 	if err != nil {
 		return nil, err
@@ -900,7 +903,14 @@ func (i *nsIndex) flushBlockSegment(
 			first = false
 
 			var (
-				opts    = block.FetchBlocksMetadataOptions{}
+				opts = block.FetchBlocksMetadataOptions{
+					// NB(bodu): There is a lag between when data gets flushed
+					// to disk and when it gets removed from memory during the next
+					// Tick. In this case, the same series can exist both on disk
+					// and in memory at the same time resulting in dupe series IDs.
+					// Only read data from disk when flushing index segments.
+					OnlyDisk: true,
+				}
 				limit   = defaultFlushReadDataBlocksBatchSize
 				results block.FetchBlocksMetadataResults
 				err     error

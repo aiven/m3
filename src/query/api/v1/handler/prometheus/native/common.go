@@ -70,6 +70,17 @@ func parseTime(r *http.Request, key string, now time.Time) (time.Time, error) {
 	return time.Time{}, errors.ErrNotFound
 }
 
+func shortDur(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = s[:len(s)-2]
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = s[:len(s)-2]
+	}
+	return s
+}
+
 // parseParams parses all params from the GET request
 func parseParams(
 	r *http.Request,
@@ -135,6 +146,16 @@ func parseParams(
 			fmt.Errorf(formatErrStr, queryParam, err), http.StatusBadRequest)
 	}
 
+	params.LookbackDuration = engineOpts.LookbackDuration()
+	if v := fetchOpts.LookbackDuration; v != nil {
+		params.LookbackDuration = *v
+	}
+
+	// Grafana lack of alert rule template variable expansion handling here (sigh)
+	// https://github.com/grafana/grafana/issues/6557
+	query = strings.ReplaceAll(query, "$__interval", shortDur(params.Step))
+	query = strings.ReplaceAll(query, "$__range", shortDur(params.LookbackDuration))
+
 	params.Query = query
 	params.Debug = parseDebugFlag(r, instrumentOpts)
 	params.BlockType = parseBlockType(r, instrumentOpts)
@@ -153,11 +174,6 @@ func parseParams(
 
 	if strings.ToLower(r.Header.Get("X-M3-Render-Format")) == "m3ql" {
 		params.FormatType = models.FormatM3QL
-	}
-
-	params.LookbackDuration = engineOpts.LookbackDuration()
-	if v := fetchOpts.LookbackDuration; v != nil {
-		params.LookbackDuration = *v
 	}
 
 	return params, nil
@@ -289,15 +305,27 @@ func filterNaNSeries(
 	return filtered
 }
 
-func renderResultsJSON(
+// RenderResultsOptions is a set of options for rendering the result.
+type RenderResultsOptions struct {
+	KeepNaNs bool
+	Start    time.Time
+	End      time.Time
+}
+
+// RenderResultsJSON renders results in JSON for range queries.
+func RenderResultsJSON(
 	w io.Writer,
-	series []*ts.Series,
-	params models.RequestParams,
-	keepNans bool,
-) {
+	result ReadResult,
+	opts RenderResultsOptions,
+) error {
+	var (
+		series   = result.Series
+		warnings = result.Meta.WarningStrings()
+	)
+
 	// NB: if dropping NaNs, drop series with only NaNs from output entirely.
-	if !keepNans {
-		series = filterNaNSeries(series, params.Start, params.End)
+	if !opts.KeepNaNs {
+		series = filterNaNSeries(series, opts.Start, opts.End)
 	}
 
 	jw := json.NewWriter(w)
@@ -305,6 +333,16 @@ func renderResultsJSON(
 
 	jw.BeginObjectField("status")
 	jw.WriteString("success")
+
+	if len(warnings) > 0 {
+		jw.BeginObjectField("warnings")
+		jw.BeginArray()
+		for _, warn := range warnings {
+			jw.WriteString(warn)
+		}
+
+		jw.EndArray()
+	}
 
 	jw.BeginObjectField("data")
 	jw.BeginObject()
@@ -332,7 +370,7 @@ func renderResultsJSON(
 			dp := vals.DatapointAt(i)
 
 			// If keepNaNs is set to false and the value is NaN, drop it from the response.
-			if !keepNans && math.IsNaN(dp.Value) {
+			if !opts.KeepNaNs && math.IsNaN(dp.Value) {
 				continue
 			}
 
@@ -340,7 +378,7 @@ func renderResultsJSON(
 			// would be at the result node but that would make it inefficient since
 			// we would need to create another block just for the sake of restricting
 			// the bounds.
-			if dp.Timestamp.Before(params.Start) {
+			if dp.Timestamp.Before(opts.Start) {
 				continue
 			}
 
@@ -349,8 +387,8 @@ func renderResultsJSON(
 			jw.WriteString(utils.FormatFloat(dp.Value))
 			jw.EndArray()
 		}
-		jw.EndArray()
 
+		jw.EndArray()
 		fixedStep, ok := s.Values().(ts.FixedResolutionMutableValues)
 		if ok {
 			jw.BeginObjectField("step_size_ms")
@@ -359,22 +397,37 @@ func renderResultsJSON(
 		jw.EndObject()
 	}
 	jw.EndArray()
-
 	jw.EndObject()
 
 	jw.EndObject()
-	jw.Close()
+	return jw.Close()
 }
 
+// renderResultsInstantaneousJSON renders results in JSON for instant queries.
 func renderResultsInstantaneousJSON(
 	w io.Writer,
-	series []*ts.Series,
+	result ReadResult,
 ) {
+	var (
+		series   = result.Series
+		warnings = result.Meta.WarningStrings()
+	)
+
 	jw := json.NewWriter(w)
 	jw.BeginObject()
 
 	jw.BeginObjectField("status")
 	jw.WriteString("success")
+
+	if len(warnings) > 0 {
+		jw.BeginObjectField("warnings")
+		jw.BeginArray()
+		for _, warn := range warnings {
+			jw.WriteString(warn)
+		}
+
+		jw.EndArray()
+	}
 
 	jw.BeginObjectField("data")
 	jw.BeginObject()

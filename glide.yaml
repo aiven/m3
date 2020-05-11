@@ -175,3 +175,7 @@ import:
   version: 377214e3044ff9f12d996f3037fb8c3e3ad16b49
   subpackages:
     - internal
+- package: github.com/influxdata/influxdb
+  version: 01c8dd416270f424ab0c40f9291e269ac6921964
+  subpackages:
+    - models

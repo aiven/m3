@@ -34,6 +34,7 @@ import (
 	"github.com/m3db/m3/src/query/api/v1/handler"
 	"github.com/m3db/m3/src/query/api/v1/handler/database"
 	"github.com/m3db/m3/src/query/api/v1/handler/graphite"
+	"github.com/m3db/m3/src/query/api/v1/handler/influxdb"
 	m3json "github.com/m3db/m3/src/query/api/v1/handler/json"
 	"github.com/m3db/m3/src/query/api/v1/handler/namespace"
 	"github.com/m3db/m3/src/query/api/v1/handler/openapi"
@@ -219,6 +220,10 @@ func (h *Handler) RegisterRoutes() error {
 		wrapped(native.NewPromReadInstantHandler(h.engine, h.fetchOptionsBuilder,
 			h.tagOptions, h.timeoutOpts, h.instrumentOpts)).ServeHTTP,
 	).Methods(native.PromReadInstantHTTPMethod)
+
+	// InfluxDB write endpoint.
+	h.router.HandleFunc(influxdb.InfluxWriteURL,
+		wrapped(influxdb.NewInfluxWriterHandler(h.downsamplerAndWriter, h.tagOptions, h.instrumentOpts)).ServeHTTP).Methods(influxdb.InfluxWriteHTTPMethod)
 
 	// Native M3 search and write endpoints
 	h.router.HandleFunc(handler.SearchURL,

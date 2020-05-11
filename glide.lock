@@ -579,6 +579,10 @@ imports:
   version: 5420a8b6744d3b0345ab293f6fcba19c978f1183
   repo: https://github.com/go-yaml/yaml.git
   vcs: git
+- name: github.com/influxdata/influxdb
+  version: 01c8dd416270f424ab0c40f9291e269ac6921964
+  subpackages:
+  - models
 testImports:
 - name: github.com/glycerine/go-unsnap-stream
   version: f9677308dec2b35e76737f9713df328ad11b1fea

@@ -298,8 +298,6 @@ imports:
   version: adf5a7427709b9deb95d29d3fa8a2bf9cfd388f1
 - name: github.com/pelletier/go-toml
   version: 728039f679cbcd4f6a54e080d2219a4c4928c546
-- name: github.com/pierrec/lz4
-  version: 377214e3044ff9f12d996f3037fb8c3e3ad16b49
 - name: github.com/pilosa/pilosa
   version: 29e6bd29d7db38d17be01cea3a452e554089b108
   subpackages:
@@ -437,9 +435,7 @@ imports:
   - metrics
   - metrics/tally
 - name: github.com/uber/tchannel-go
-  version: 22400d53f9053c30c4a386f43a5c8c77fa44f135
-  repo: ssh://git@github.com/aiven/tchannel-go.git
-  vcs: git
+  version: 162ecb0dc97845a0c42aae3899651dba111085e5
   subpackages:
   - internal/argreader
   - relay

@@ -134,3 +134,8 @@ replace go.etcd.io/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20191023171146-3cf2f
 replace github.com/prometheus/common => github.com/prometheus/common v0.9.1
 
 replace github.com/uber-go/atomic => go.uber.org/atomic v1.6.0
+
+// Aiven specific: lz4 compressed branch
+replace github.com/uber/tchannel-go => github.com/aiven/tchannel-go v0.0.0-20191121135334-22400d53f905
+
+replace github.com/pierrec/lz4 => github.com/pierrec/lz4 v2.5.2+incompatible

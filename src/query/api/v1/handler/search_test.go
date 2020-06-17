@@ -39,7 +39,9 @@ import (
 	"github.com/m3db/m3/src/query/test"
 	"github.com/m3db/m3/src/query/test/m3"
 	"github.com/m3db/m3/src/query/test/seriesiter"
-	"github.com/m3db/m3/src/x/ident"
+	"github.com/m3db/m3/src/x/ident" 
+	xtest "github.com/m3db/m3/src/x/test" 
+	xhttp "github.com/m3db/m3/src/x/net/http" 
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -91,7 +93,7 @@ func generateTagIters(ctrl *gomock.Controller) *client.MockTaggedIDsIterator {
 }
 
 func searchServer(t *testing.T) *SearchHandler {
-	ctrl := gomock.NewController(t)
+	ctrl := xtest.NewController(t)
 
 	mockTaggedIDsIter := generateTagIters(ctrl)
 
@@ -129,7 +131,7 @@ func TestSearchEndpoint(t *testing.T) {
 
 	urlWithLimit := fmt.Sprintf("%s%s", server.URL, "?limit=90")
 	req, _ := http.NewRequest("POST", urlWithLimit, generateSearchBody(t))
-	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add(xhttp.HeaderContentType, xhttp.ContentTypeJSON)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()

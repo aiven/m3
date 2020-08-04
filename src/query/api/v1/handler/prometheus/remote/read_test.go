@@ -45,6 +45,7 @@ import (
 	"github.com/m3db/m3/src/query/executor"
 	"github.com/m3db/m3/src/query/generated/proto/prompb"
 	"github.com/m3db/m3/src/query/models"
+	xpromql "github.com/m3db/m3/src/query/parser/promql"
 	"github.com/m3db/m3/src/query/storage"
 	"github.com/m3db/m3/src/query/test"
 	"github.com/m3db/m3/src/query/test/m3"
@@ -91,7 +92,7 @@ func TestParseExpr(t *testing.T) {
 	start := time.Now().Truncate(time.Hour)
 	req := httptest.NewRequest(http.MethodPost, "/", buildBody(query, start))
 	req.Header.Add(xhttp.HeaderContentType, xhttp.ContentTypeFormURLEncoded)
-	readReq, err := ParseExpr(req)
+	readReq, err := ParseExpr(req, xpromql.NewParseOptions())
 	require.NoError(t, err)
 
 	q := func(start, end time.Time, matchers []*prompb.LabelMatcher) *prompb.Query {
@@ -160,7 +161,11 @@ func setupServer(t *testing.T) *httptest.Server {
 
 func readHandler(store storage.Storage,
 	timeoutOpts *prometheus.TimeoutOpts) http.Handler {
-	fetchOpts := handleroptions.FetchOptionsBuilderOptions{Limit: 100}
+	fetchOpts := handleroptions.FetchOptionsBuilderOptions{
+		Limits: handleroptions.FetchOptionsBuilderLimitsOptions{
+			SeriesLimit: 100,
+		},
+	}
 	iOpts := instrument.NewOptions()
 	engine := newEngine(store, defaultLookbackDuration, nil, iOpts)
 	opts := options.EmptyHandlerOptions().
@@ -175,7 +180,11 @@ func readHandler(store storage.Storage,
 func TestPromReadParsing(t *testing.T) {
 	ctrl := xtest.NewController(t)
 	storage, _ := m3.NewStorageAndSession(t, ctrl)
-	builderOpts := handleroptions.FetchOptionsBuilderOptions{Limit: 100}
+	builderOpts := handleroptions.FetchOptionsBuilderOptions{
+		Limits: handleroptions.FetchOptionsBuilderLimitsOptions{
+			SeriesLimit: 100,
+		},
+	}
 	engine := newEngine(storage, defaultLookbackDuration, nil,
 		instrument.NewOptions())
 
@@ -283,7 +292,11 @@ func TestReadErrorMetricsCount(t *testing.T) {
 	scope, closer := tally.NewRootScope(tally.ScopeOptions{Reporter: reporter}, time.Millisecond)
 	defer closer.Close()
 	readMetrics := newPromReadMetrics(scope)
-	buildOpts := handleroptions.FetchOptionsBuilderOptions{Limit: 100}
+	buildOpts := handleroptions.FetchOptionsBuilderOptions{
+		Limits: handleroptions.FetchOptionsBuilderLimitsOptions{
+			SeriesLimit: 100,
+		},
+	}
 	engine := newEngine(storage, defaultLookbackDuration, nil,
 		instrument.NewOptions())
 	opts := options.EmptyHandlerOptions().
@@ -345,8 +358,8 @@ func TestMultipleRead(t *testing.T) {
 
 	req := &prompb.ReadRequest{
 		Queries: []*prompb.Query{
-			{StartTimestampMs: 10},
-			{StartTimestampMs: 20},
+			{StartTimestampMs: 10, EndTimestampMs: 100},
+			{StartTimestampMs: 20, EndTimestampMs: 200},
 		},
 	}
 
@@ -423,7 +436,7 @@ func TestReadWithOptions(t *testing.T) {
 	}
 
 	req := &prompb.ReadRequest{
-		Queries: []*prompb.Query{{StartTimestampMs: 10}},
+		Queries: []*prompb.Query{{StartTimestampMs: 10, EndTimestampMs: 100}},
 	}
 
 	q, err := storage.PromReadQueryToM3(req.Queries[0])

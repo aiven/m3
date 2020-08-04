@@ -34,6 +34,7 @@ import (
 	"github.com/m3db/m3/src/metrics/metadata"
 	"github.com/m3db/m3/src/metrics/policy"
 	"github.com/m3db/m3/src/x/clock"
+	"github.com/m3db/m3/src/x/pool"
 	"github.com/m3db/m3/src/x/serialize"
 
 	"github.com/golang/protobuf/jsonpb"
@@ -41,14 +42,39 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+type metricsAppenderPool struct {
+	pool pool.ObjectPool
+}
+
+func newMetricsAppenderPool(opts pool.ObjectPoolOptions) *metricsAppenderPool {
+	p := &metricsAppenderPool{
+		pool: pool.NewObjectPool(opts),
+	}
+	p.pool.Init(func() interface{} {
+		return newMetricsAppender(p)
+	})
+	return p
+}
+
+func (p *metricsAppenderPool) Get() *metricsAppender {
+	return p.pool.Get().(*metricsAppender)
+}
+
+func (p *metricsAppenderPool) Put(v *metricsAppender) {
+	p.pool.Put(v)
+}
+
 type metricsAppender struct {
 	metricsAppenderOptions
 
+	pool *metricsAppenderPool
+
 	tags                         *tags
 	multiSamplesAppender         *multiSamplesAppender
-	currStagedMetadata           metadata.StagedMetadata
+	curr                         metadata.StagedMetadata
 	defaultStagedMetadatasCopies []metadata.StagedMetadatas
 	mappingRuleStoragePolicies   []policy.StoragePolicy
+	tagEncoder                   serialize.TagEncoder
 }
 
 // metricsAppenderOptions will have one of agg or clientRemote set.
@@ -57,8 +83,8 @@ type metricsAppenderOptions struct {
 	clientRemote client.Client
 
 	defaultStagedMetadatasProtos []metricpb.StagedMetadatas
-	tagEncoder                   serialize.TagEncoder
 	matcher                      matcher.Matcher
+	tagEncoderPool               serialize.TagEncoderPool
 	metricTagsIteratorPool       serialize.MetricTagsIteratorPool
 
 	clockOpts    clock.Options
@@ -66,14 +92,31 @@ type metricsAppenderOptions struct {
 	logger       *zap.Logger
 }
 
-func newMetricsAppender(opts metricsAppenderOptions) *metricsAppender {
-	stagedMetadatasCopies := make([]metadata.StagedMetadatas,
-		len(opts.defaultStagedMetadatasProtos))
+func newMetricsAppender(pool *metricsAppenderPool) *metricsAppender {
 	return &metricsAppender{
-		metricsAppenderOptions:       opts,
-		tags:                         newTags(),
-		multiSamplesAppender:         newMultiSamplesAppender(),
-		defaultStagedMetadatasCopies: stagedMetadatasCopies,
+		pool:                 pool,
+		tags:                 newTags(),
+		multiSamplesAppender: newMultiSamplesAppender(),
+	}
+}
+
+// reset is called when pulled from the pool.
+func (a *metricsAppender) reset(opts metricsAppenderOptions) {
+	a.metricsAppenderOptions = opts
+	if a.tagEncoder == nil {
+		a.tagEncoder = opts.tagEncoderPool.Get()
+	}
+
+	// Make sure a.defaultStagedMetadatasCopies is right length.
+	capRequired := len(opts.defaultStagedMetadatasProtos)
+	if cap(a.defaultStagedMetadatasCopies) < capRequired {
+		// Too short, reallocate.
+		slice := make([]metadata.StagedMetadatas, capRequired)
+		a.defaultStagedMetadatasCopies = slice
+	} else {
+		// Has enough capacity, take subslice.
+		slice := a.defaultStagedMetadatasCopies[:capRequired]
+		a.defaultStagedMetadatasCopies = slice
 	}
 }
 
@@ -81,18 +124,18 @@ func (a *metricsAppender) AddTag(name, value []byte) {
 	a.tags.append(name, value)
 }
 
-func (a *metricsAppender) SamplesAppender(opts SampleAppenderOptions) (SamplesAppender, error) {
+func (a *metricsAppender) SamplesAppender(opts SampleAppenderOptions) (SamplesAppenderResult, error) {
 	// Sort tags
 	sort.Sort(a.tags)
 
 	// Encode tags and compute a temporary (unowned) ID
 	a.tagEncoder.Reset()
 	if err := a.tagEncoder.Encode(a.tags); err != nil {
-		return nil, err
+		return SamplesAppenderResult{}, err
 	}
 	data, ok := a.tagEncoder.Data()
 	if !ok {
-		return nil, fmt.Errorf("unable to encode tags: names=%v, values=%v",
+		return SamplesAppenderResult{}, fmt.Errorf("unable to encode tags: names=%v, values=%v",
 			a.tags.names, a.tags.values)
 	}
 
@@ -109,33 +152,34 @@ func (a *metricsAppender) SamplesAppender(opts SampleAppenderOptions) (SamplesAp
 	matchResult := a.matcher.ForwardMatch(id, fromNanos, toNanos)
 	id.Close()
 
+	var dropApplyResult metadata.ApplyOrRemoveDropPoliciesResult
 	if opts.Override {
 		// Reuse a slice to keep the current staged metadatas we will apply.
-		a.currStagedMetadata.Pipelines = a.currStagedMetadata.Pipelines[:0]
+		a.curr.Pipelines = a.curr.Pipelines[:0]
 
 		for _, rule := range opts.OverrideRules.MappingRules {
 			stagedMetadatas, err := rule.StagedMetadatas()
 			if err != nil {
-				return nil, err
+				return SamplesAppenderResult{}, err
 			}
 
 			a.debugLogMatch("downsampler applying override mapping rule",
 				debugLogMatchOptions{Meta: stagedMetadatas})
 
 			pipelines := stagedMetadatas[len(stagedMetadatas)-1]
-			a.currStagedMetadata.Pipelines =
-				append(a.currStagedMetadata.Pipelines, pipelines.Pipelines...)
+			a.curr.Pipelines =
+				append(a.curr.Pipelines, pipelines.Pipelines...)
 		}
 
 		a.multiSamplesAppender.addSamplesAppender(samplesAppender{
 			agg:             a.agg,
 			clientRemote:    a.clientRemote,
 			unownedID:       unownedID,
-			stagedMetadatas: []metadata.StagedMetadata{a.currStagedMetadata},
+			stagedMetadatas: []metadata.StagedMetadata{a.curr},
 		})
 	} else {
 		// Reuse a slice to keep the current staged metadatas we will apply.
-		a.currStagedMetadata.Pipelines = a.currStagedMetadata.Pipelines[:0]
+		a.curr.Pipelines = a.curr.Pipelines[:0]
 
 		// NB(r): First apply mapping rules to see which storage policies
 		// have been applied, any that have been applied as part of
@@ -162,8 +206,8 @@ func (a *metricsAppender) SamplesAppender(opts SampleAppenderOptions) (SamplesAp
 
 			// Only sample if going to actually aggregate
 			pipelines := mappingRuleStagedMetadatas[len(mappingRuleStagedMetadatas)-1]
-			a.currStagedMetadata.Pipelines =
-				append(a.currStagedMetadata.Pipelines, pipelines.Pipelines...)
+			a.curr.Pipelines =
+				append(a.curr.Pipelines, pipelines.Pipelines...)
 		}
 
 		// Always aggregate any default staged metadatas (unless
@@ -175,7 +219,7 @@ func (a *metricsAppender) SamplesAppender(opts SampleAppenderOptions) (SamplesAp
 			stagedMetadatas := a.defaultStagedMetadatasCopies[idx]
 			err := stagedMetadatas.FromProto(stagedMetadatasProto)
 			if err != nil {
-				return nil,
+				return SamplesAppenderResult{},
 					fmt.Errorf("unable to copy default staged metadatas: %v", err)
 			}
 
@@ -247,13 +291,16 @@ func (a *metricsAppender) SamplesAppender(opts SampleAppenderOptions) (SamplesAp
 				debugLogMatchOptions{Meta: stagedMetadatas})
 
 			pipelines := stagedMetadatas[len(stagedMetadatas)-1]
-			a.currStagedMetadata.Pipelines =
-				append(a.currStagedMetadata.Pipelines, pipelines.Pipelines...)
+			a.curr.Pipelines =
+				append(a.curr.Pipelines, pipelines.Pipelines...)
 		}
 
-		if len(a.currStagedMetadata.Pipelines) > 0 {
+		// Apply drop policies results
+		a.curr.Pipelines, dropApplyResult = a.curr.Pipelines.ApplyOrRemoveDropPolicies()
+
+		if len(a.curr.Pipelines) > 0 && !a.curr.IsDropPolicyApplied() {
 			// Send to downsampler if we have something in the pipeline.
-			mappingStagedMetadatas := []metadata.StagedMetadata{a.currStagedMetadata}
+			mappingStagedMetadatas := []metadata.StagedMetadata{a.curr}
 			a.debugLogMatch("downsampler using built mapping staged metadatas",
 				debugLogMatchOptions{Meta: mappingStagedMetadatas})
 
@@ -281,7 +328,11 @@ func (a *metricsAppender) SamplesAppender(opts SampleAppenderOptions) (SamplesAp
 		}
 	}
 
-	return a.multiSamplesAppender, nil
+	dropPolicyApplied := dropApplyResult != metadata.NoDropPolicyPresentResult
+	return SamplesAppenderResult{
+		SamplesAppender:     a.multiSamplesAppender,
+		IsDropPolicyApplied: dropPolicyApplied,
+	}, nil
 }
 
 type debugLogMatchOptions struct {
@@ -309,14 +360,14 @@ func (a *metricsAppender) debugLogMatch(str string, opts debugLogMatchOptions) {
 	a.logger.Debug(str, fields...)
 }
 
-func (a *metricsAppender) Reset() {
+func (a *metricsAppender) NextMetric() {
 	a.tags.names = a.tags.names[:0]
 	a.tags.values = a.tags.values[:0]
 }
 
 func (a *metricsAppender) Finalize() {
-	a.tagEncoder.Finalize()
-	a.tagEncoder = nil
+	// Return to pool.
+	a.pool.Put(a)
 }
 
 func stagedMetadatasLogField(sm metadata.StagedMetadatas) zapcore.Field {

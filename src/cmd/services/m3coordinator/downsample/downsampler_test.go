@@ -48,8 +48,10 @@ import (
 	"github.com/m3db/m3/src/query/storage/mock"
 	"github.com/m3db/m3/src/x/clock"
 	"github.com/m3db/m3/src/x/instrument"
+	xio "github.com/m3db/m3/src/x/io"
 	"github.com/m3db/m3/src/x/pool"
 	"github.com/m3db/m3/src/x/serialize"
+	xtest "github.com/m3db/m3/src/x/test"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -481,6 +483,87 @@ func TestDownsamplerAggregationWithRulesConfigRollupRulesIncreaseAdd(t *testing.
 	testDownsamplerAggregation(t, testDownsampler)
 }
 
+func TestDownsamplerAggregationWithRulesConfigRollupRuleAndDropPolicy(t *testing.T) {
+	gaugeMetric := testGaugeMetric{
+		tags: map[string]string{
+			nameTag:         "http_requests",
+			"app":           "nginx_edge",
+			"status_code":   "500",
+			"endpoint":      "/foo/bar",
+			"not_rolled_up": "not_rolled_up_value",
+		},
+		timedSamples: []testGaugeMetricTimedSample{
+			{value: 42},
+			{value: 64, offset: 5 * time.Second},
+		},
+		expectDropPolicyApplied: true,
+	}
+	res := 5 * time.Second
+	ret := 30 * 24 * time.Hour
+	filter := fmt.Sprintf("%s:http_requests app:* status_code:* endpoint:*", nameTag)
+	testDownsampler := newTestDownsampler(t, testDownsamplerOptions{
+		autoMappingRules: []AutoMappingRule{},
+		rulesConfig: &RulesConfiguration{
+			MappingRules: []MappingRuleConfiguration{
+				{
+					Filter: filter,
+					Drop:   true,
+				},
+			},
+			RollupRules: []RollupRuleConfiguration{
+				{
+					Filter: filter,
+					Transforms: []TransformConfiguration{
+						{
+							Transform: &TransformOperationConfiguration{
+								Type: transformation.PerSecond,
+							},
+						},
+						{
+							Rollup: &RollupOperationConfiguration{
+								MetricName:   "http_requests_by_status_code",
+								GroupBy:      []string{"app", "status_code", "endpoint"},
+								Aggregations: []aggregation.Type{aggregation.Sum},
+							},
+						},
+					},
+					StoragePolicies: []StoragePolicyConfiguration{
+						{
+							Resolution: res,
+							Retention:  ret,
+						},
+					},
+				},
+			},
+		},
+		ingest: &testDownsamplerOptionsIngest{
+			gaugeMetrics: []testGaugeMetric{gaugeMetric},
+		},
+		expect: &testDownsamplerOptionsExpect{
+			writes: []testExpectedWrite{
+				{
+					tags: map[string]string{
+						nameTag:               "http_requests_by_status_code",
+						string(rollupTagName): string(rollupTagValue),
+						"app":                 "nginx_edge",
+						"status_code":         "500",
+						"endpoint":            "/foo/bar",
+					},
+					values: []expectedValue{{value: 4.4}},
+					attributes: &storagemetadata.Attributes{
+						MetricsType: storagemetadata.AggregatedMetricsType,
+						Resolution:  res,
+						Retention:   ret,
+					},
+				},
+			},
+		},
+	})
+
+	// Test expected output
+	testDownsamplerAggregation(t, testDownsampler)
+}
+
 func TestDownsamplerAggregationWithTimedSamples(t *testing.T) {
 	counterMetrics, counterMetricsExpect := testCounterMetrics(testCounterMetricsOptions{
 		timedSamples: true,
@@ -549,7 +632,7 @@ func TestDownsamplerAggregationWithOverrideRules(t *testing.T) {
 }
 
 func TestDownsamplerAggregationWithRemoteAggregatorClient(t *testing.T) {
-	ctrl := gomock.NewController(t)
+	ctrl := xtest.NewController(t)
 	defer ctrl.Finish()
 
 	// Create mock client
@@ -583,9 +666,10 @@ type expectedValue struct {
 }
 
 type testCounterMetric struct {
-	tags         map[string]string
-	samples      []int64
-	timedSamples []testCounterMetricTimedSample
+	tags                    map[string]string
+	samples                 []int64
+	timedSamples            []testCounterMetricTimedSample
+	expectDropPolicyApplied bool
 }
 
 type testCounterMetricTimedSample struct {
@@ -595,9 +679,10 @@ type testCounterMetricTimedSample struct {
 }
 
 type testGaugeMetric struct {
-	tags         map[string]string
-	samples      []float64
-	timedSamples []testGaugeMetricTimedSample
+	tags                    map[string]string
+	samples                 []float64
+	timedSamples            []testGaugeMetricTimedSample
+	expectDropPolicyApplied bool
 }
 
 type testGaugeMetricTimedSample struct {
@@ -906,14 +991,18 @@ func testDownsamplerAggregationIngest(
 		opts = *testOpts.sampleAppenderOpts
 	}
 	for _, metric := range testCounterMetrics {
-		appender.Reset()
+		appender.NextMetric()
+
 		for name, value := range metric.tags {
 			appender.AddTag([]byte(name), []byte(value))
 		}
 
-		samplesAppender, err := appender.SamplesAppender(opts)
+		samplesAppenderResult, err := appender.SamplesAppender(opts)
 		require.NoError(t, err)
+		require.Equal(t, metric.expectDropPolicyApplied,
+			samplesAppenderResult.IsDropPolicyApplied)
 
+		samplesAppender := samplesAppenderResult.SamplesAppender
 		for _, sample := range metric.samples {
 			err = samplesAppender.AppendCounterSample(sample)
 			require.NoError(t, err)
@@ -930,14 +1019,18 @@ func testDownsamplerAggregationIngest(
 		}
 	}
 	for _, metric := range testGaugeMetrics {
-		appender.Reset()
+		appender.NextMetric()
+
 		for name, value := range metric.tags {
 			appender.AddTag([]byte(name), []byte(value))
 		}
 
-		samplesAppender, err := appender.SamplesAppender(opts)
+		samplesAppenderResult, err := appender.SamplesAppender(opts)
 		require.NoError(t, err)
+		require.Equal(t, metric.expectDropPolicyApplied,
+			samplesAppenderResult.IsDropPolicyApplied)
 
+		samplesAppender := samplesAppenderResult.SamplesAppender
 		for _, sample := range metric.samples {
 			err = samplesAppender.AppendGaugeSample(sample)
 			require.NoError(t, err)
@@ -1027,13 +1120,20 @@ func newTestDownsampler(t *testing.T, opts testDownsamplerOptions) testDownsampl
 	tagEncoderOptions := serialize.NewTagEncoderOptions()
 	tagDecoderOptions := serialize.NewTagDecoderOptions(serialize.TagDecoderOptionsConfig{})
 	tagEncoderPoolOptions := pool.NewObjectPoolOptions().
+		SetSize(2).
 		SetInstrumentOptions(instrumentOpts.
 			SetMetricsScope(instrumentOpts.MetricsScope().
 				SubScope("tag-encoder-pool")))
 	tagDecoderPoolOptions := pool.NewObjectPoolOptions().
+		SetSize(2).
 		SetInstrumentOptions(instrumentOpts.
 			SetMetricsScope(instrumentOpts.MetricsScope().
 				SubScope("tag-decoder-pool")))
+	metricsAppenderPoolOptions := pool.NewObjectPoolOptions().
+		SetSize(2).
+		SetInstrumentOptions(instrumentOpts.
+			SetMetricsScope(instrumentOpts.MetricsScope().
+				SubScope("metrics-appender-pool")))
 
 	var cfg Configuration
 	if opts.remoteClientMock != nil {
@@ -1048,16 +1148,18 @@ func newTestDownsampler(t *testing.T, opts testDownsamplerOptions) testDownsampl
 	}
 
 	instance, err := cfg.NewDownsampler(DownsamplerOptions{
-		Storage:               storage,
-		ClusterClient:         clusterclient.NewMockClient(gomock.NewController(t)),
-		RulesKVStore:          rulesKVStore,
-		AutoMappingRules:      opts.autoMappingRules,
-		ClockOptions:          clockOpts,
-		InstrumentOptions:     instrumentOpts,
-		TagEncoderOptions:     tagEncoderOptions,
-		TagDecoderOptions:     tagDecoderOptions,
-		TagEncoderPoolOptions: tagEncoderPoolOptions,
-		TagDecoderPoolOptions: tagDecoderPoolOptions,
+		Storage:                    storage,
+		ClusterClient:              clusterclient.NewMockClient(gomock.NewController(t)),
+		RulesKVStore:               rulesKVStore,
+		AutoMappingRules:           opts.autoMappingRules,
+		ClockOptions:               clockOpts,
+		InstrumentOptions:          instrumentOpts,
+		TagEncoderOptions:          tagEncoderOptions,
+		TagDecoderOptions:          tagDecoderOptions,
+		TagEncoderPoolOptions:      tagEncoderPoolOptions,
+		TagDecoderPoolOptions:      tagDecoderPoolOptions,
+		MetricsAppenderPoolOptions: metricsAppenderPoolOptions,
+		RWOptions:                  xio.NewOptions(),
 	})
 	require.NoError(t, err)
 

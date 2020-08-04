@@ -46,6 +46,7 @@ import (
 	"github.com/m3db/m3/src/query/util/logging"
 	"github.com/m3db/m3/src/x/clock"
 	xerrors "github.com/m3db/m3/src/x/errors"
+	"github.com/m3db/m3/src/x/headers"
 	"github.com/m3db/m3/src/x/instrument"
 	xhttp "github.com/m3db/m3/src/x/net/http"
 	"github.com/m3db/m3/src/x/retry"
@@ -85,6 +86,12 @@ var (
 		MaxRetries:     1,
 		Forever:        &defaultForwardingRetryForever,
 		Jitter:         &defaultForwardingRetryJitter,
+	}
+
+	defaultValue = ingest.IterValue{
+		Tags:       models.EmptyTags(),
+		Attributes: ts.DefaultSeriesAttributes(),
+		Metadata:   ts.Metadata{},
 	}
 )
 
@@ -395,7 +402,7 @@ func (h *PromWriteHandler) parseRequest(
 	r *http.Request,
 ) (*prompb.WriteRequest, ingest.WriteOptions, prometheus.ParsePromCompressedRequestResult, *xhttp.ParseError) {
 	var opts ingest.WriteOptions
-	if v := strings.TrimSpace(r.Header.Get(handleroptions.MetricsTypeHeader)); v != "" {
+	if v := strings.TrimSpace(r.Header.Get(headers.MetricsTypeHeader)); v != "" {
 		// Allow the metrics type and storage policies to override
 		// the default rules and policies if specified.
 		metricsType, err := storagemetadata.ParseMetricsType(v)
@@ -411,7 +418,7 @@ func (h *PromWriteHandler) parseRequest(
 		opts.DownsampleOverride = true
 		opts.DownsampleMappingRules = nil
 
-		strPolicy := strings.TrimSpace(r.Header.Get(handleroptions.MetricsStoragePolicyHeader))
+		strPolicy := strings.TrimSpace(r.Header.Get(headers.MetricsStoragePolicyHeader))
 		switch metricsType {
 		case storagemetadata.UnaggregatedMetricsType:
 			if strPolicy != emptyStoragePolicyVar {
@@ -436,10 +443,10 @@ func (h *PromWriteHandler) parseRequest(
 			}
 		}
 	}
-	if v := strings.TrimSpace(r.Header.Get(handleroptions.WriteTypeHeader)); v != "" {
+	if v := strings.TrimSpace(r.Header.Get(headers.WriteTypeHeader)); v != "" {
 		switch v {
-		case handleroptions.DefaultWriteType:
-		case handleroptions.AggregateWriteType:
+		case headers.DefaultWriteType:
+		case headers.AggregateWriteType:
 			opts.WriteOverride = true
 			opts.WriteStoragePolicies = policy.StoragePolicies{}
 		default:
@@ -463,7 +470,7 @@ func (h *PromWriteHandler) parseRequest(
 			xhttp.NewParseError(err, http.StatusBadRequest)
 	}
 
-	if mapStr := r.Header.Get(handleroptions.MapTagsByJSONHeader); mapStr != "" {
+	if mapStr := r.Header.Get(headers.MapTagsByJSONHeader); mapStr != "" {
 		var opts handleroptions.MapTagsOptions
 		if err := json.Unmarshal([]byte(mapStr), &opts); err != nil {
 			return nil, ingest.WriteOptions{}, prometheus.ParsePromCompressedRequestResult{},
@@ -495,7 +502,7 @@ func (h *PromWriteHandler) write(
 func (h *PromWriteHandler) forward(
 	ctx context.Context,
 	request prometheus.ParsePromCompressedRequestResult,
-	headers http.Header,
+	header http.Header,
 	target handleroptions.PromWriteHandlerForwardTargetOptions,
 ) error {
 	method := target.Method
@@ -512,10 +519,10 @@ func (h *PromWriteHandler) forward(
 	// (map tags, storage policy, etc.) that we must forward to the target
 	// coordinator to guarantee same behavior as the coordinator that originally
 	// received the request.
-	if headers != nil {
-		for h := range headers {
-			if strings.HasPrefix(h, handleroptions.M3HeaderPrefix) {
-				req.Header.Add(h, headers.Get(h))
+	if header != nil {
+		for h := range header {
+			if strings.HasPrefix(h, headers.M3HeaderPrefix) {
+				req.Header.Add(h, header.Get(h))
 			}
 		}
 	}
@@ -577,6 +584,7 @@ type promTSIter struct {
 	attributes []ts.SeriesAttributes
 	tags       []models.Tags
 	datapoints []ts.Datapoints
+	metadatas  []ts.Metadata
 }
 
 func (i *promTSIter) Next() bool {
@@ -584,12 +592,21 @@ func (i *promTSIter) Next() bool {
 	return i.idx < len(i.tags)
 }
 
-func (i *promTSIter) Current() (models.Tags, ts.Datapoints, ts.SeriesAttributes, xtime.Unit, []byte) {
+func (i *promTSIter) Current() ingest.IterValue {
 	if len(i.tags) == 0 || i.idx < 0 || i.idx >= len(i.tags) {
-		return models.EmptyTags(), nil, ts.DefaultSeriesAttributes(), 0, nil
+		return defaultValue
 	}
 
-	return i.tags[i.idx], i.datapoints[i.idx], i.attributes[i.idx], xtime.Millisecond, nil
+	value := ingest.IterValue{
+		Tags:       i.tags[i.idx],
+		Datapoints: i.datapoints[i.idx],
+		Attributes: ts.DefaultSeriesAttributes(),
+		Unit:       xtime.Millisecond,
+	}
+	if i.idx < len(i.metadatas) {
+		value.Metadata = i.metadatas[i.idx]
+	}
+	return value
 }
 
 func (i *promTSIter) Reset() error {
@@ -599,4 +616,14 @@ func (i *promTSIter) Reset() error {
 
 func (i *promTSIter) Error() error {
 	return nil
+}
+
+func (i *promTSIter) SetCurrentMetadata(metadata ts.Metadata) {
+	if len(i.metadatas) == 0 {
+		i.metadatas = make([]ts.Metadata, len(i.tags))
+	}
+	if i.idx < 0 || i.idx >= len(i.metadatas) {
+		return
+	}
+	i.metadatas[i.idx] = metadata
 }

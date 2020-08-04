@@ -145,19 +145,21 @@ func TestCommitLogIndexPerfSpeedBootstrap(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, commitLog.Open())
 
-	// NB(r): Write points using no up front series metadata or point
-	// generation so that the memory usage is constant during the write phase
 	ctx := context.NewContext()
 	defer ctx.Close()
+
 	shardSet := setup.ShardSet()
 	idPrefix := "test.id.test.id.test.id.test.id.test.id.test.id.test.id.test.id"
 	idPrefixBytes := []byte(idPrefix)
-	checkedBytes := checked.NewBytes(nil, nil)
-	seriesID := ident.BinaryID(checkedBytes)
 	numBytes := make([]byte, 8)
 	numHexBytes := make([]byte, hex.EncodedLen(len(numBytes)))
+	tagEncoderPool := commitLogOpts.FilesystemOptions().TagEncoderPool()
+	tagSliceIter := ident.NewTagsIterator(ident.Tags{})
 	for i := 0; i < numPoints; i++ {
 		for j := 0; j < numSeries; j++ {
+			checkedBytes := checked.NewBytes(nil, nil)
+			seriesID := ident.BinaryID(checkedBytes)
+
 			// Write the ID prefix
 			checkedBytes.Resize(0)
 			checkedBytes.AppendAll(idPrefixBytes)
@@ -171,11 +173,19 @@ func TestCommitLogIndexPerfSpeedBootstrap(t *testing.T) {
 			// Use the tag sets appropriate for this series number
 			seriesTags := tagSets[j%len(tagSets)]
 
+			tagSliceIter.Reset(seriesTags)
+			tagEncoder := tagEncoderPool.Get()
+			err := tagEncoder.Encode(tagSliceIter)
+			require.NoError(t, err)
+
+			encodedTagsChecked, ok := tagEncoder.Data()
+			require.True(t, ok)
+
 			series := ts.Series{
 				Namespace:   ns.ID(),
 				Shard:       shardSet.Lookup(seriesID),
 				ID:          seriesID,
-				Tags:        seriesTags,
+				EncodedTags: ts.EncodedTags(encodedTagsChecked.Bytes()),
 				UniqueIndex: uint64(j),
 			}
 			dp := ts.Datapoint{

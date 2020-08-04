@@ -32,13 +32,13 @@ import (
 	"github.com/m3db/m3/src/query/models"
 	xpromql "github.com/m3db/m3/src/query/parser/promql"
 	"github.com/m3db/m3/src/query/storage"
+	"github.com/m3db/m3/src/query/storage/m3/consolidators"
 	"github.com/m3db/m3/src/query/ts"
 	"github.com/m3db/m3/src/query/util"
 	"github.com/m3db/m3/src/query/util/json"
 	xhttp "github.com/m3db/m3/src/x/net/http"
 
 	"github.com/golang/snappy"
-	promql "github.com/prometheus/prometheus/promql/parser"
 )
 
 const (
@@ -148,12 +148,14 @@ func ParseTagCompletionParamsToQueries(
 	r *http.Request,
 ) (TagCompletionQueries, *xhttp.ParseError) {
 	tagCompletionQueries := TagCompletionQueries{}
-	start, err := parseTimeWithDefault(r, "start", time.Time{})
+	start, err := util.ParseTimeStringWithDefault(r.FormValue("start"),
+		time.Unix(0, 0))
 	if err != nil {
 		return tagCompletionQueries, xhttp.NewParseError(err, http.StatusBadRequest)
 	}
 
-	end, err := parseTimeWithDefault(r, "end", time.Now())
+	end, err := util.ParseTimeStringWithDefault(r.FormValue("end"),
+		time.Now())
 	if err != nil {
 		return tagCompletionQueries, xhttp.NewParseError(err, http.StatusBadRequest)
 	}
@@ -217,21 +219,10 @@ func parseTagCompletionQueries(r *http.Request) ([]string, error) {
 	return queries, nil
 }
 
-func parseTimeWithDefault(
-	r *http.Request,
-	key string,
-	defaultTime time.Time,
-) (time.Time, error) {
-	if t := r.FormValue(key); t != "" {
-		return util.ParseTimeString(t)
-	}
-
-	return defaultTime, nil
-}
-
 // ParseSeriesMatchQuery parses all params from the GET request.
 func ParseSeriesMatchQuery(
 	r *http.Request,
+	parseOpts xpromql.ParseOptions,
 	tagOptions models.TagOptions,
 ) ([]*storage.FetchQuery, *xhttp.ParseError) {
 	r.ParseForm()
@@ -240,19 +231,22 @@ func ParseSeriesMatchQuery(
 		return nil, xhttp.NewParseError(errors.ErrInvalidMatchers, http.StatusBadRequest)
 	}
 
-	start, err := parseTimeWithDefault(r, "start", time.Time{})
+	start, err := util.ParseTimeStringWithDefault(r.FormValue("start"),
+		time.Unix(0, 0))
 	if err != nil {
 		return nil, xhttp.NewParseError(err, http.StatusBadRequest)
 	}
 
-	end, err := parseTimeWithDefault(r, "end", time.Now())
+	end, err := util.ParseTimeStringWithDefault(r.FormValue("end"),
+		time.Now())
 	if err != nil {
 		return nil, xhttp.NewParseError(err, http.StatusBadRequest)
 	}
 
 	queries := make([]*storage.FetchQuery, len(matcherValues))
+	fn := parseOpts.MetricSelectorFn()
 	for i, s := range matcherValues {
-		promMatchers, err := promql.ParseMetricSelector(s)
+		promMatchers, err := fn(s)
 		if err != nil {
 			return nil, xhttp.NewParseError(err, http.StatusBadRequest)
 		}
@@ -275,7 +269,7 @@ func ParseSeriesMatchQuery(
 
 func renderNameOnlyTagCompletionResultsJSON(
 	w io.Writer,
-	results []storage.CompletedTag,
+	results []consolidators.CompletedTag,
 ) error {
 	jw := json.NewWriter(w)
 	jw.BeginArray()
@@ -291,7 +285,7 @@ func renderNameOnlyTagCompletionResultsJSON(
 
 func renderDefaultTagCompletionResultsJSON(
 	w io.Writer,
-	results []storage.CompletedTag,
+	results []consolidators.CompletedTag,
 ) error {
 	jw := json.NewWriter(w)
 	jw.BeginObject()
@@ -327,7 +321,7 @@ func renderDefaultTagCompletionResultsJSON(
 // RenderListTagResultsJSON renders list tag results to json format.
 func RenderListTagResultsJSON(
 	w io.Writer,
-	result *storage.CompleteTagsResult,
+	result *consolidators.CompleteTagsResult,
 ) error {
 	if !result.CompleteNameOnly {
 		return errors.ErrWithNames
@@ -355,7 +349,7 @@ func RenderListTagResultsJSON(
 
 // RenderTagCompletionResultsJSON renders tag completion results to json format.
 func RenderTagCompletionResultsJSON(
-	w io.Writer, result storage.CompleteTagsResult) error {
+	w io.Writer, result consolidators.CompleteTagsResult) error {
 	results := result.CompletedTags
 	if result.CompleteNameOnly {
 		return renderNameOnlyTagCompletionResultsJSON(w, results)
@@ -367,7 +361,7 @@ func RenderTagCompletionResultsJSON(
 // RenderTagValuesResultsJSON renders tag values results to json format.
 func RenderTagValuesResultsJSON(
 	w io.Writer,
-	result *storage.CompleteTagsResult,
+	result *consolidators.CompleteTagsResult,
 ) error {
 	if result.CompleteNameOnly {
 		return errors.ErrNamesOnly

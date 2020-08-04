@@ -33,6 +33,7 @@ import (
 	"github.com/m3db/m3/src/query/errors"
 	"github.com/m3db/m3/src/query/storage"
 	"github.com/m3db/m3/src/query/storage/m3/storagemetadata"
+	"github.com/m3db/m3/src/x/headers"
 	xhttp "github.com/m3db/m3/src/x/net/http"
 )
 
@@ -55,7 +56,15 @@ type FetchOptionsBuilder interface {
 // FetchOptionsBuilderOptions provides options to use when creating a
 // fetch options builder.
 type FetchOptionsBuilderOptions struct {
-	Limit             int
+	Limits        FetchOptionsBuilderLimitsOptions
+	RestrictByTag *storage.RestrictByTag
+}
+
+// FetchOptionsBuilderLimitsOptions provides limits options to use when
+// creating a fetch options builder.
+type FetchOptionsBuilderLimitsOptions struct {
+	SeriesLimit       int
+	DocsLimit         int
 	RequireExhaustive bool
 }
 
@@ -71,8 +80,8 @@ func NewFetchOptionsBuilder(
 }
 
 // ParseLimit parses request limit from either header or query string.
-func ParseLimit(req *http.Request, defaultLimit int) (int, error) {
-	if str := req.Header.Get(LimitMaxSeriesHeader); str != "" {
+func ParseLimit(req *http.Request, header, formValue string, defaultLimit int) (int, error) {
+	if str := req.Header.Get(header); str != "" {
 		n, err := strconv.Atoi(str)
 		if err != nil {
 			err = fmt.Errorf(
@@ -82,7 +91,7 @@ func ParseLimit(req *http.Request, defaultLimit int) (int, error) {
 		return n, nil
 	}
 
-	if str := req.FormValue("limit"); str != "" {
+	if str := req.FormValue(formValue); str != "" {
 		n, err := strconv.Atoi(str)
 		if err != nil {
 			err = fmt.Errorf(
@@ -98,7 +107,7 @@ func ParseLimit(req *http.Request, defaultLimit int) (int, error) {
 // ParseRequireExhaustive parses request limit require exhaustive from header or
 // query string.
 func ParseRequireExhaustive(req *http.Request, defaultValue bool) (bool, error) {
-	if str := req.Header.Get(LimitRequireExhaustiveHeader); str != "" {
+	if str := req.Header.Get(headers.LimitRequireExhaustiveHeader); str != "" {
 		v, err := strconv.ParseBool(str)
 		if err != nil {
 			err = fmt.Errorf(
@@ -127,21 +136,30 @@ func (b fetchOptionsBuilder) NewFetchOptions(
 ) (*storage.FetchOptions, *xhttp.ParseError) {
 	fetchOpts := storage.NewFetchOptions()
 
-	limit, err := ParseLimit(req, b.opts.Limit)
+	seriesLimit, err := ParseLimit(req, headers.LimitMaxSeriesHeader,
+		"limit", b.opts.Limits.SeriesLimit)
 	if err != nil {
 		return nil, xhttp.NewParseError(err, http.StatusBadRequest)
 	}
 
-	fetchOpts.Limit = limit
+	fetchOpts.SeriesLimit = seriesLimit
 
-	requireExhaustive, err := ParseRequireExhaustive(req, b.opts.RequireExhaustive)
+	docsLimit, err := ParseLimit(req, headers.LimitMaxDocsHeader,
+		"docsLimit", b.opts.Limits.DocsLimit)
+	if err != nil {
+		return nil, xhttp.NewParseError(err, http.StatusBadRequest)
+	}
+
+	fetchOpts.DocsLimit = docsLimit
+
+	requireExhaustive, err := ParseRequireExhaustive(req, b.opts.Limits.RequireExhaustive)
 	if err != nil {
 		return nil, xhttp.NewParseError(err, http.StatusBadRequest)
 	}
 
 	fetchOpts.RequireExhaustive = requireExhaustive
 
-	if str := req.Header.Get(MetricsTypeHeader); str != "" {
+	if str := req.Header.Get(headers.MetricsTypeHeader); str != "" {
 		mt, err := storagemetadata.ParseMetricsType(str)
 		if err != nil {
 			err = fmt.Errorf(
@@ -155,7 +173,7 @@ func (b fetchOptionsBuilder) NewFetchOptions(
 		fetchOpts.RestrictQueryOptions.RestrictByType.MetricsType = mt
 	}
 
-	if str := req.Header.Get(MetricsStoragePolicyHeader); str != "" {
+	if str := req.Header.Get(headers.MetricsStoragePolicyHeader); str != "" {
 		sp, err := policy.ParseStoragePolicy(str)
 		if err != nil {
 			err = fmt.Errorf(
@@ -169,19 +187,24 @@ func (b fetchOptionsBuilder) NewFetchOptions(
 		fetchOpts.RestrictQueryOptions.RestrictByType.StoragePolicy = sp
 	}
 
-	if str := req.Header.Get(RestrictByTagsJSONHeader); str != "" {
+	if str := req.Header.Get(headers.RestrictByTagsJSONHeader); str != "" {
+		// Allow header to override any default restrict by tags config.
 		var opts StringTagOptions
 		if err := json.Unmarshal([]byte(str), &opts); err != nil {
 			return nil, xhttp.NewParseError(err, http.StatusBadRequest)
 		}
 
-		tagOpts, err := opts.toOptions()
+		tagOpts, err := opts.StorageOptions()
 		if err != nil {
 			return nil, xhttp.NewParseError(err, http.StatusBadRequest)
 		}
 
 		fetchOpts.RestrictQueryOptions = newOrExistingRestrictQueryOptions(fetchOpts)
 		fetchOpts.RestrictQueryOptions.RestrictByTag = tagOpts
+	} else if defaultTagOpts := b.opts.RestrictByTag; defaultTagOpts != nil {
+		// Apply defaults if not overridden by header.
+		fetchOpts.RestrictQueryOptions = newOrExistingRestrictQueryOptions(fetchOpts)
+		fetchOpts.RestrictQueryOptions.RestrictByTag = defaultTagOpts
 	}
 
 	if restrict := fetchOpts.RestrictQueryOptions; restrict != nil {

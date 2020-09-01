@@ -12,6 +12,7 @@ require (
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/RoaringBitmap/roaring v0.4.21
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
+	github.com/aiven/tchannel-go v1.19.0 // indirect
 	github.com/apache/thrift v0.13.0
 	github.com/apex/log v1.3.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.1 // indirect
@@ -156,7 +157,7 @@ replace github.com/prometheus/common => github.com/prometheus/common v0.9.1
 
 replace github.com/uber-go/atomic => go.uber.org/atomic v1.6.0
 
-// Aiven specific: lz4 compressed branch
-replace github.com/uber/tchannel-go => github.com/aiven/tchannel-go v0.0.0-20191121135334-22400d53f905
+// Aiven specific: snappy compressed branch
+replace github.com/uber/tchannel-go => github.com/aiven/tchannel-go aiven
 
 replace github.com/pierrec/lz4 => github.com/pierrec/lz4 v2.5.2+incompatible

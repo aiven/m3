@@ -12,6 +12,7 @@ require (
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/RoaringBitmap/roaring v0.4.21
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
+	github.com/aiven/tchannel-go v1.19.0 // indirect
 	github.com/apache/thrift v0.13.0
 	github.com/apex/log v1.3.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.1 // indirect
@@ -163,6 +164,9 @@ replace github.com/uber-go/atomic => github.com/uber-go/atomic v1.4.0
 // etcd 3.14.13 depends on v1.3.3, but everything before v1.3.5 has unsafe misuses, and fails hard on go 1.14
 // TODO: remove after etcd pulls in the change to a new release on 3.4 branch
 replace go.etcd.io/bbolt => go.etcd.io/bbolt v1.3.5
+
+// Aiven specific: snappy compressed branch
+replace github.com/uber/tchannel-go => github.com/aiven/tchannel-go v1.19.1-0.20200910083610-4b39a9179ae1
 
 // https://github.com/ory/dockertest/issues/212
 replace golang.org/x/sys => golang.org/x/sys v0.0.0-20200826173525-f9321e4c35a6

@@ -320,7 +320,10 @@ func NewOptionsForAsyncClusters(opts Options, topoInits []topology.Initializer, 
 func defaultNewConnectionFn(
 	channelName string, address string, opts Options,
 ) (xresource.SimpleCloser, rpc.TChanNode, error) {
-	channel, err := tchannel.NewChannel(channelName, opts.ChannelOptions())
+	channelOpts := opts.ChannelOptions()
+	// Advertize snappy compression support. It gets used only if remote peer has it enabled.
+	channelOpts.DefaultConnectionOptions.CompressionMethod = tchannel.SnappyCompression
+	channel, err := tchannel.NewChannel(channelName, channelOpts)
 	if err != nil {
 		return nil, nil, err
 	}

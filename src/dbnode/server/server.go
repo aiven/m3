@@ -684,6 +684,10 @@ func Run(runOpts RunOptions) {
 	if cfg.TChannel != nil {
 		tchannelOpts.MaxIdleTime = cfg.TChannel.MaxIdleTime
 		tchannelOpts.IdleCheckInterval = cfg.TChannel.IdleCheckInterval
+		tchannelOpts.DefaultConnectionOptions.CompressionMethod = tchannel.CompressionMethod(cfg.TChannel.Compression)
+		if tchannelOpts.DefaultConnectionOptions.CompressionMethod != tchannel.NoCompression {
+			logger.Info("tchannel has compression enabled", zap.String("compression", tchannelOpts.DefaultConnectionOptions.CompressionMethod.String()))
+		}
 	}
 	tchanOpts := ttnode.NewOptions(tchannelOpts).
 		SetInstrumentOptions(opts.InstrumentOptions())

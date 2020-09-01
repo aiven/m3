@@ -326,6 +326,8 @@ func defaultNewConnectionFn(
 	if chanOpts := clientOpts.ChannelOptions(); chanOpts != nil {
 		immutableOpts := *chanOpts
 		opts = &immutableOpts
+		// Advertise snappy compression support. It gets used only if remote peer has it enabled.
+		opts.DefaultConnectionOptions.CompressionMethod = tchannel.SnappyCompression
 	}
 	channel, err := tchannel.NewChannel(channelName, opts)
 	if err != nil {

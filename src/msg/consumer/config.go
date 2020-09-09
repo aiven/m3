@@ -25,6 +25,7 @@ import (
 
 	"github.com/m3db/m3/src/msg/protocol/proto"
 	"github.com/m3db/m3/src/x/instrument"
+	xio "github.com/m3db/m3/src/x/io"
 	"github.com/m3db/m3/src/x/pool"
 )
 
@@ -37,6 +38,7 @@ type Configuration struct {
 	AckBufferSize             *int                      `yaml:"ackBufferSize"`
 	ConnectionWriteBufferSize *int                      `yaml:"connectionWriteBufferSize"`
 	ConnectionReadBufferSize  *int                      `yaml:"connectionReadBufferSize"`
+	Compression               xio.CompressionMethod     `yaml:"compression"`
 }
 
 // MessagePoolConfiguration is the message pool configuration
@@ -69,7 +71,7 @@ func (c MessagePoolConfiguration) NewOptions(
 }
 
 // NewOptions creates consumer options.
-func (c *Configuration) NewOptions(iOpts instrument.Options) Options {
+func (c *Configuration) NewOptions(iOpts instrument.Options, rwOpts xio.Options) Options {
 	opts := NewOptions().SetInstrumentOptions(iOpts)
 	if c.Encoder != nil {
 		opts = opts.SetEncoderOptions(c.Encoder.NewOptions(iOpts))
@@ -92,5 +94,19 @@ func (c *Configuration) NewOptions(iOpts instrument.Options) Options {
 	if c.ConnectionReadBufferSize != nil {
 		opts = opts.SetConnectionReadBufferSize(*c.ConnectionReadBufferSize)
 	}
+
+	// Enable compression
+	opts = opts.SetCompression(c.Compression)
+	switch opts.Compression() {
+	case xio.SnappyCompression:
+		rwOpts = rwOpts.
+			SetResettableReaderFn(xio.SnappyResettableReaderFn()).
+			SetResettableWriterFn(xio.SnappyResettableWriterFn())
+	}
+
+	opts = opts.
+		SetDecoderOptions(opts.DecoderOptions().SetRWOptions(rwOpts)).
+		SetEncoderOptions(opts.EncoderOptions().SetRWOptions(rwOpts))
+
 	return opts
 }

@@ -45,6 +45,7 @@ type options struct {
 	readBufferSize   int
 	iOpts            instrument.Options
 	rwOpts           xio.Options
+	compression      xio.CompressionMethod
 }
 
 // NewOptions creates a new options.
@@ -150,4 +151,14 @@ func (opts *options) SetRWOptions(value xio.Options) Options {
 
 func (opts *options) RWOptions() xio.Options {
 	return opts.rwOpts
+}
+
+func (opts *options) SetCompression(value xio.CompressionMethod) Options {
+	o := *opts
+	o.compression = value
+	return &o
+}
+
+func (opts *options) Compression() xio.CompressionMethod {
+	return opts.compression
 }

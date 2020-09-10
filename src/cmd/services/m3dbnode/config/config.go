@@ -37,6 +37,7 @@ import (
 	"github.com/m3db/m3/src/x/instrument"
 	xlog "github.com/m3db/m3/src/x/log"
 	"github.com/m3db/m3/src/x/opentracing"
+	"github.com/uber/tchannel-go"
 
 	"go.etcd.io/etcd/embed"
 	"go.etcd.io/etcd/pkg/transport"
@@ -577,8 +578,24 @@ func IsSeedNode(initialCluster []environment.SeedNode, hostID string) bool {
 	return false
 }
 
+type compressionMethod tchannel.CompressionMethod
+
+func (cm *compressionMethod) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var str string
+	if err := unmarshal(&str); err != nil {
+		return err
+	}
+	tcm, err := tchannel.NewCompressionMethod(str)
+	if err != nil {
+		return err
+	}
+	*cm = compressionMethod(tcm)
+	return nil
+}
+
 // TChannelConfiguration holds TChannel config options.
 type TChannelConfiguration struct {
-	MaxIdleTime       time.Duration `yaml:"maxIdleTime"`
-	IdleCheckInterval time.Duration `yaml:"idleCheckInterval"`
+	MaxIdleTime       time.Duration     `yaml:"maxIdleTime"`
+	IdleCheckInterval time.Duration     `yaml:"idleCheckInterval"`
+	Compression       compressionMethod `yaml:"compression"`
 }

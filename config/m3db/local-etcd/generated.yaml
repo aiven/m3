@@ -78,6 +78,8 @@
       "handlerPath": "/metrics"
     "samplingRate": 1
     "sanitization": "prometheus"
+  "tchannel":
+    "compression": "snappy"
   "writeNewSeriesAsync": true
   "writeNewSeriesBackoffDuration": "2ms"
   "writeNewSeriesLimitPerSecond": 1048576

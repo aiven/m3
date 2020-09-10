@@ -95,6 +95,9 @@ function(coordinator={}, db={}) {
     "fs": {
       "filePathPrefix": "/var/lib/m3db"
     },
+    "tchannel": {
+      "compression": "snappy",
+    },
     "config": {
       "service": {
         "env": "default_env",

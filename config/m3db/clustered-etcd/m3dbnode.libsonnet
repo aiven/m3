@@ -132,6 +132,9 @@ function(cluster, coordinator={}, db={}) {
     },
     "fs": {
       "filePathPrefix": "/var/lib/m3db"
+    },
+    "tchannel": {
+      "compression": "snappy",
     }
   } + db,
 }

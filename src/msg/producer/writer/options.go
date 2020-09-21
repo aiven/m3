@@ -28,6 +28,7 @@ import (
 	"github.com/m3db/m3/src/msg/protocol/proto"
 	"github.com/m3db/m3/src/msg/topic"
 	"github.com/m3db/m3/src/x/instrument"
+	xio "github.com/m3db/m3/src/x/io"
 	"github.com/m3db/m3/src/x/pool"
 	"github.com/m3db/m3/src/x/retry"
 )
@@ -113,6 +114,10 @@ type ConnectionOptions interface {
 
 	// SetInstrumentOptions sets the instrument options.
 	SetInstrumentOptions(value instrument.Options) ConnectionOptions
+
+	SetCompression(value xio.CompressionMethod) ConnectionOptions
+
+	Compression() xio.CompressionMethod
 }
 
 type connectionOptions struct {
@@ -126,6 +131,7 @@ type connectionOptions struct {
 	writeBufferSize int
 	readBufferSize  int
 	iOpts           instrument.Options
+	compression     xio.CompressionMethod
 }
 
 // NewConnectionOptions creates ConnectionOptions.
@@ -241,6 +247,16 @@ func (opts *connectionOptions) InstrumentOptions() instrument.Options {
 func (opts *connectionOptions) SetInstrumentOptions(value instrument.Options) ConnectionOptions {
 	o := *opts
 	o.iOpts = value
+	return &o
+}
+
+func (opts *connectionOptions) Compression() xio.CompressionMethod {
+	return opts.compression
+}
+
+func (opts *connectionOptions) SetCompression(value xio.CompressionMethod) ConnectionOptions {
+	o := *opts
+	o.compression = value
 	return &o
 }
 

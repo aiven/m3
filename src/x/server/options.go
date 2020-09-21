@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/m3db/m3/src/x/instrument"
+	xio "github.com/m3db/m3/src/x/io"
 	xnet "github.com/m3db/m3/src/x/net"
 	"github.com/m3db/m3/src/x/retry"
 )
@@ -79,6 +80,7 @@ type options struct {
 	tcpConnectionKeepAlive       bool
 	tcpConnectionKeepAlivePeriod time.Duration
 	listenerOpts                 xnet.ListenerOptions
+	compression                  xio.CompressionMethod
 }
 
 // NewOptions creates a new set of server options

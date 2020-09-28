@@ -33,25 +33,15 @@ import (
 
 type placementService struct {
 	placement.Storage
-	*placementServiceImpl
+
+	opts     placement.Options
+	algo     placement.Algorithm
+	selector placement.InstanceSelector
+	logger   *zap.Logger
 }
 
 // NewPlacementService returns an instance of placement service.
 func NewPlacementService(s placement.Storage, opts placement.Options) placement.Service {
-	return &placementService{
-		Storage: s,
-		placementServiceImpl: newPlacementServiceImpl(
-			opts,
-			s,
-
-		),
-	}
-}
-
-func newPlacementServiceImpl(
-	opts placement.Options,
-	storage minimalPlacementStorage,
-) *placementServiceImpl {
 	if opts == nil {
 		opts = placement.NewOptions()
 	}
@@ -61,8 +51,8 @@ func newPlacementServiceImpl(
 		instanceSelector = selector.NewInstanceSelector(opts)
 	}
 
-	return &placementServiceImpl{
-		store:    storage,
+	return &placementService{
+		Storage:  s,
 		opts:     opts,
 		algo:     algo.NewAlgorithm(opts),
 		selector: instanceSelector,
@@ -70,37 +60,7 @@ func newPlacementServiceImpl(
 	}
 }
 
-// minimalPlacementStorage is the subset of the placement.Storage interface used by placement.Service
-// directly.
-type minimalPlacementStorage interface {
-
-	// Set writes a placement.
-	Set(p placement.Placement) (placement.Placement, error)
-
-	// CheckAndSet writes a placement.Placement if the current version
-	// matches the expected version.
-	CheckAndSet(p placement.Placement, version int) (placement.Placement, error)
-
-	// SetIfNotExist writes a placement.Placement.
-	SetIfNotExist(p placement.Placement) (placement.Placement, error)
-
-	// Placement reads placement.Placement.
-	Placement() (placement.Placement, error)
-}
-
-// type assertion
-var _ minimalPlacementStorage = placement.Storage(nil)
-
-type placementServiceImpl struct {
-	store minimalPlacementStorage
-
-	opts     placement.Options
-	algo     placement.Algorithm
-	selector placement.InstanceSelector
-	logger   *zap.Logger
-}
-
-func (ps *placementServiceImpl) BuildInitialPlacement(
+func (ps *placementService) BuildInitialPlacement(
 	candidates []placement.Instance,
 	numShards int,
 	rf int,
@@ -132,11 +92,11 @@ func (ps *placementServiceImpl) BuildInitialPlacement(
 		return nil, err
 	}
 
-	return ps.store.SetIfNotExist(tempPlacement)
+	return ps.SetIfNotExist(tempPlacement)
 }
 
-func (ps *placementServiceImpl) AddReplica() (placement.Placement, error) {
-	curPlacement, err := ps.store.Placement()
+func (ps *placementService) AddReplica() (placement.Placement, error) {
+	curPlacement, err := ps.Placement()
 	if err != nil {
 		return nil, err
 	}
@@ -154,13 +114,13 @@ func (ps *placementServiceImpl) AddReplica() (placement.Placement, error) {
 		return nil, err
 	}
 
-	return ps.store.CheckAndSet(tempPlacement, curPlacement.Version())
+	return ps.CheckAndSet(tempPlacement, curPlacement.Version())
 }
 
-func (ps *placementServiceImpl) AddInstances(
+func (ps *placementService) AddInstances(
 	candidates []placement.Instance,
 ) (placement.Placement, []placement.Instance, error) {
-	curPlacement, err := ps.store.Placement()
+	curPlacement, err := ps.Placement()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -191,15 +151,15 @@ func (ps *placementServiceImpl) AddInstances(
 		addingInstances[i] = addingInstance
 	}
 
-	newPlacement, err := ps.store.CheckAndSet(tempPlacement, curPlacement.Version())
+	newPlacement, err := ps.CheckAndSet(tempPlacement, curPlacement.Version())
 	if err != nil {
 		return nil, nil, err
 	}
 	return newPlacement, addingInstances, nil
 }
 
-func (ps *placementServiceImpl) RemoveInstances(instanceIDs []string) (placement.Placement, error) {
-	curPlacement, err := ps.store.Placement()
+func (ps *placementService) RemoveInstances(instanceIDs []string) (placement.Placement, error) {
+	curPlacement, err := ps.Placement()
 	if err != nil {
 		return nil, err
 	}
@@ -217,14 +177,14 @@ func (ps *placementServiceImpl) RemoveInstances(instanceIDs []string) (placement
 		return nil, err
 	}
 
-	return ps.store.CheckAndSet(tempPlacement, curPlacement.Version())
+	return ps.CheckAndSet(tempPlacement, curPlacement.Version())
 }
 
-func (ps *placementServiceImpl) ReplaceInstances(
+func (ps *placementService) ReplaceInstances(
 	leavingInstanceIDs []string,
 	candidates []placement.Instance,
 ) (placement.Placement, []placement.Instance, error) {
-	curPlacement, err := ps.store.Placement()
+	curPlacement, err := ps.Placement()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -256,15 +216,15 @@ func (ps *placementServiceImpl) ReplaceInstances(
 		addedInstances = append(addedInstances, addedInstance)
 	}
 
-	newPlacement, err := ps.store.CheckAndSet(tempPlacement, curPlacement.Version())
+	newPlacement, err := ps.CheckAndSet(tempPlacement, curPlacement.Version())
 	if err != nil {
 		return nil, nil, err
 	}
 	return newPlacement, addedInstances, nil
 }
 
-func (ps *placementServiceImpl) MarkShardsAvailable(instanceID string, shardIDs ...uint32) (placement.Placement, error) {
-	curPlacement, err := ps.store.Placement()
+func (ps *placementService) MarkShardsAvailable(instanceID string, shardIDs ...uint32) (placement.Placement, error) {
+	curPlacement, err := ps.Placement()
 	if err != nil {
 		return nil, err
 	}
@@ -282,11 +242,11 @@ func (ps *placementServiceImpl) MarkShardsAvailable(instanceID string, shardIDs 
 		return nil, err
 	}
 
-	return ps.store.CheckAndSet(tempPlacement, curPlacement.Version())
+	return ps.CheckAndSet(tempPlacement, curPlacement.Version())
 }
 
-func (ps *placementServiceImpl) MarkInstanceAvailable(instanceID string) (placement.Placement, error) {
-	curPlacement, err := ps.store.Placement()
+func (ps *placementService) MarkInstanceAvailable(instanceID string) (placement.Placement, error) {
+	curPlacement, err := ps.Placement()
 	if err != nil {
 		return nil, err
 	}
@@ -315,11 +275,11 @@ func (ps *placementServiceImpl) MarkInstanceAvailable(instanceID string) (placem
 		return nil, err
 	}
 
-	return ps.store.CheckAndSet(tempPlacement, curPlacement.Version())
+	return ps.CheckAndSet(tempPlacement, curPlacement.Version())
 }
 
-func (ps *placementServiceImpl) MarkAllShardsAvailable() (placement.Placement, error) {
-	curPlacement, err := ps.store.Placement()
+func (ps *placementService) MarkAllShardsAvailable() (placement.Placement, error) {
+	curPlacement, err := ps.Placement()
 	if err != nil {
 		return nil, err
 	}
@@ -340,5 +300,5 @@ func (ps *placementServiceImpl) MarkAllShardsAvailable() (placement.Placement, e
 		return nil, err
 	}
 
-	return ps.store.CheckAndSet(tempPlacement, curPlacement.Version())
+	return ps.CheckAndSet(tempPlacement, curPlacement.Version())
 }

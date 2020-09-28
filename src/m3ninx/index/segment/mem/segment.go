@@ -27,7 +27,7 @@ import (
 
 	"github.com/m3db/m3/src/m3ninx/doc"
 	"github.com/m3db/m3/src/m3ninx/index"
-	"github.com/m3db/m3/src/m3ninx/index/segment"
+	sgmt "github.com/m3db/m3/src/m3ninx/index/segment"
 	"github.com/m3db/m3/src/m3ninx/postings"
 	"github.com/m3db/m3/src/m3ninx/util"
 )
@@ -38,7 +38,7 @@ var (
 )
 
 // nolint: maligned
-type memSegment struct {
+type segment struct {
 	offset    int
 	plPool    postings.Pool
 	newUUIDFn util.NewUUIDFn
@@ -68,37 +68,39 @@ type memSegment struct {
 
 // NewSegment returns a new in-memory mutable segment. It will start assigning
 // postings IDs at the provided offset.
-func NewSegment(opts Options) (segment.MutableSegment, error) {
-	s := &memSegment{
+func NewSegment(offset postings.ID, opts Options) (sgmt.MutableSegment, error) {
+	s := &segment{
+		offset:    int(offset),
 		plPool:    opts.PostingsListPool(),
 		newUUIDFn: opts.NewUUIDFn(),
 		termsDict: newTermsDict(opts),
-		readerID:  postings.NewAtomicID(0),
+		readerID:  postings.NewAtomicID(offset),
 	}
 
 	s.docs.data = make([]doc.Document, opts.InitialCapacity())
 
 	s.writer.idSet = newIDsMap(256)
-	s.writer.nextID = 0
+	s.writer.nextID = offset
 	return s, nil
 }
 
-func (s *memSegment) SetIndexConcurrency(value int) {
+func (s *segment) SetIndexConcurrency(value int) {
 	// No-op, does not support concurrent indexing.
 }
 
-func (s *memSegment) IndexConcurrency() int {
+func (s *segment) IndexConcurrency() int {
 	return 1
 }
 
-func (s *memSegment) Reset() {
+func (s *segment) Reset(offset postings.ID) {
 	s.state.Lock()
 	defer s.state.Unlock()
 
 	s.state.sealed = false
 
+	s.offset = int(offset)
 	s.termsDict.Reset()
-	s.readerID = postings.NewAtomicID(0)
+	s.readerID = postings.NewAtomicID(offset)
 
 	var empty doc.Document
 	for i := range s.docs.data {
@@ -107,13 +109,20 @@ func (s *memSegment) Reset() {
 	s.docs.data = s.docs.data[:0]
 
 	s.writer.idSet.Reset()
-	s.writer.nextID = 0
+	s.writer.nextID = offset
 }
 
-func (s *memSegment) Size() int64 {
+func (s *segment) Offset() postings.ID {
+	s.state.RLock()
+	offset := postings.ID(s.offset)
+	s.state.RUnlock()
+	return offset
+}
+
+func (s *segment) Size() int64 {
 	s.state.RLock()
 	closed := s.state.closed
-	size := int64(s.readerID.Load())
+	size := int64(s.readerID.Load()) - int64(s.offset)
 	s.state.RUnlock()
 	if closed {
 		return 0
@@ -121,7 +130,7 @@ func (s *memSegment) Size() int64 {
 	return size
 }
 
-func (s *memSegment) Docs() []doc.Document {
+func (s *segment) Docs() []doc.Document {
 	s.state.RLock()
 	defer s.state.RUnlock()
 
@@ -131,11 +140,11 @@ func (s *memSegment) Docs() []doc.Document {
 	return s.docs.data[:s.readerID.Load()]
 }
 
-func (s *memSegment) ContainsID(id []byte) (bool, error) {
+func (s *segment) ContainsID(id []byte) (bool, error) {
 	s.state.RLock()
 	if s.state.closed {
 		s.state.RUnlock()
-		return false, segment.ErrClosed
+		return false, sgmt.ErrClosed
 	}
 
 	contains := s.containsIDWithStateLock(id)
@@ -143,15 +152,15 @@ func (s *memSegment) ContainsID(id []byte) (bool, error) {
 	return contains, nil
 }
 
-func (s *memSegment) containsIDWithStateLock(id []byte) bool {
+func (s *segment) containsIDWithStateLock(id []byte) bool {
 	return s.termsDict.ContainsTerm(doc.IDReservedFieldName, id)
 }
 
-func (s *memSegment) ContainsField(f []byte) (bool, error) {
+func (s *segment) ContainsField(f []byte) (bool, error) {
 	s.state.RLock()
 	if s.state.closed {
 		s.state.RUnlock()
-		return false, segment.ErrClosed
+		return false, sgmt.ErrClosed
 	}
 
 	contains := s.termsDict.ContainsField(f)
@@ -159,11 +168,11 @@ func (s *memSegment) ContainsField(f []byte) (bool, error) {
 	return contains, nil
 }
 
-func (s *memSegment) Insert(d doc.Document) ([]byte, error) {
+func (s *segment) Insert(d doc.Document) ([]byte, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if s.state.closed {
-		return nil, segment.ErrClosed
+		return nil, sgmt.ErrClosed
 	}
 
 	{
@@ -188,11 +197,11 @@ func (s *memSegment) Insert(d doc.Document) ([]byte, error) {
 	return d.ID, nil
 }
 
-func (s *memSegment) InsertBatch(b index.Batch) error {
+func (s *segment) InsertBatch(b index.Batch) error {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if s.state.closed {
-		return segment.ErrClosed
+		return sgmt.ErrClosed
 	}
 
 	batchErr := index.NewBatchPartialError()
@@ -231,7 +240,7 @@ func (s *memSegment) InsertBatch(b index.Batch) error {
 
 // prepareDocsWithLocks ensures the given documents can be inserted into the index. It
 // must be called with the state and writer locks.
-func (s *memSegment) prepareDocsWithLocks(
+func (s *segment) prepareDocsWithLocks(
 	b index.Batch,
 	batchErr *index.BatchPartialError,
 ) error {
@@ -293,7 +302,7 @@ func (s *memSegment) prepareDocsWithLocks(
 
 // insertDocWithLocks inserts a document into the index. It must be called with the
 // state and writer locks.
-func (s *memSegment) insertDocWithLocks(d doc.Document) error {
+func (s *segment) insertDocWithLocks(d doc.Document) error {
 	nextID := s.writer.nextID
 	s.storeDocWithStateLock(nextID, d)
 	s.writer.nextID++
@@ -302,7 +311,7 @@ func (s *memSegment) insertDocWithLocks(d doc.Document) error {
 
 // indexDocWithStateLock indexes the fields of a document in the segment's terms
 // dictionary. It must be called with the segment's state lock.
-func (s *memSegment) indexDocWithStateLock(id postings.ID, d doc.Document) error {
+func (s *segment) indexDocWithStateLock(id postings.ID, d doc.Document) error {
 	for _, f := range d.Fields {
 		if err := s.termsDict.Insert(f, id); err != nil {
 			return err
@@ -316,8 +325,8 @@ func (s *memSegment) indexDocWithStateLock(id postings.ID, d doc.Document) error
 
 // storeDocWithStateLock stores a documents into the segment's mapping of postings
 // IDs to documents. It must be called with the segment's state lock.
-func (s *memSegment) storeDocWithStateLock(id postings.ID, d doc.Document) {
-	idx := int(id)
+func (s *segment) storeDocWithStateLock(id postings.ID, d doc.Document) {
+	idx := int(id) - s.offset
 
 	// Can return early if we have sufficient capacity.
 	{
@@ -354,21 +363,21 @@ func (s *memSegment) storeDocWithStateLock(id postings.ID, d doc.Document) {
 	}
 }
 
-func (s *memSegment) Reader() (segment.Reader, error) {
+func (s *segment) Reader() (index.Reader, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if s.state.closed {
-		return nil, segment.ErrClosed
+		return nil, sgmt.ErrClosed
 	}
 
 	limits := readerDocRange{
-		startInclusive: postings.ID(0),
+		startInclusive: postings.ID(s.offset),
 		endExclusive:   s.readerID.Load(),
 	}
 	return newReader(s, limits, s.plPool), nil
 }
 
-func (s *memSegment) AllDocs() (index.IDDocIterator, error) {
+func (s *segment) AllDocs() (index.IDDocIterator, error) {
 	r, err := s.Reader()
 	if err != nil {
 		return nil, err
@@ -376,34 +385,34 @@ func (s *memSegment) AllDocs() (index.IDDocIterator, error) {
 	return r.AllDocs()
 }
 
-func (s *memSegment) matchTerm(field, term []byte) (postings.List, error) {
+func (s *segment) matchTerm(field, term []byte) (postings.List, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if s.state.closed {
-		return nil, segment.ErrClosed
+		return nil, sgmt.ErrClosed
 	}
 
 	return s.termsDict.MatchTerm(field, term), nil
 }
 
-func (s *memSegment) matchRegexp(field []byte, compiled *re.Regexp) (postings.List, error) {
+func (s *segment) matchRegexp(field []byte, compiled *re.Regexp) (postings.List, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if s.state.closed {
-		return nil, segment.ErrClosed
+		return nil, sgmt.ErrClosed
 	}
 
 	return s.termsDict.MatchRegexp(field, compiled), nil
 }
 
-func (s *memSegment) getDoc(id postings.ID) (doc.Document, error) {
+func (s *segment) getDoc(id postings.ID) (doc.Document, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if s.state.closed {
-		return doc.Document{}, segment.ErrClosed
+		return doc.Document{}, sgmt.ErrClosed
 	}
 
-	idx := int(id)
+	idx := int(id) - s.offset
 
 	s.docs.RLock()
 	if idx >= len(s.docs.data) {
@@ -416,18 +425,18 @@ func (s *memSegment) getDoc(id postings.ID) (doc.Document, error) {
 	return d, nil
 }
 
-func (s *memSegment) Close() error {
+func (s *segment) Close() error {
 	s.state.Lock()
 	defer s.state.Unlock()
 	if s.state.closed {
-		return segment.ErrClosed
+		return sgmt.ErrClosed
 	}
 
 	s.state.closed = true
 	return nil
 }
 
-func (s *memSegment) IsSealed() bool {
+func (s *segment) IsSealed() bool {
 	s.state.Lock()
 	defer s.state.Unlock()
 	if s.state.closed {
@@ -436,11 +445,11 @@ func (s *memSegment) IsSealed() bool {
 	return s.state.sealed
 }
 
-func (s *memSegment) Seal() error {
+func (s *segment) Seal() error {
 	s.state.Lock()
 	defer s.state.Unlock()
 	if s.state.closed {
-		return segment.ErrClosed
+		return sgmt.ErrClosed
 	}
 
 	if s.state.sealed {
@@ -451,7 +460,7 @@ func (s *memSegment) Seal() error {
 	return nil
 }
 
-func (s *memSegment) Fields() (segment.FieldsIterator, error) {
+func (s *segment) Fields() (sgmt.FieldsIterator, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if err := s.checkIsSealedWithRLock(); err != nil {
@@ -460,7 +469,7 @@ func (s *memSegment) Fields() (segment.FieldsIterator, error) {
 	return s.termsDict.Fields(), nil
 }
 
-func (s *memSegment) FieldsPostingsList() (segment.FieldsPostingsListIterator, error) {
+func (s *segment) FieldsPostingsList() (sgmt.FieldsPostingsListIterator, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if err := s.checkIsSealedWithRLock(); err != nil {
@@ -469,7 +478,7 @@ func (s *memSegment) FieldsPostingsList() (segment.FieldsPostingsListIterator, e
 	return s.termsDict.FieldsPostingsList(), nil
 }
 
-func (s *memSegment) Terms(name []byte) (segment.TermsIterator, error) {
+func (s *segment) Terms(name []byte) (sgmt.TermsIterator, error) {
 	s.state.RLock()
 	defer s.state.RUnlock()
 	if err := s.checkIsSealedWithRLock(); err != nil {
@@ -478,21 +487,21 @@ func (s *memSegment) Terms(name []byte) (segment.TermsIterator, error) {
 	return s.termsDict.Terms(name), nil
 }
 
-func (s *memSegment) FieldsIterable() segment.FieldsIterable {
+func (s *segment) FieldsIterable() sgmt.FieldsIterable {
 	return s
 }
 
-func (s *memSegment) FieldsPostingsListIterable() segment.FieldsPostingsListIterable {
+func (s *segment) FieldsPostingsListIterable() sgmt.FieldsPostingsListIterable {
 	return s
 }
 
-func (s *memSegment) TermsIterable() segment.TermsIterable {
+func (s *segment) TermsIterable() sgmt.TermsIterable {
 	return s
 }
 
-func (s *memSegment) checkIsSealedWithRLock() error {
+func (s *segment) checkIsSealedWithRLock() error {
 	if s.state.closed {
-		return segment.ErrClosed
+		return sgmt.ErrClosed
 	}
 	if !s.state.sealed {
 		return errSegmentIsUnsealed

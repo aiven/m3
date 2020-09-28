@@ -41,7 +41,7 @@ func NewReaderSliceOfSlicesFromBlockReadersIterator(
 }
 
 func (it *readerSliceOfSlicesIterator) Next() bool {
-	if it.idx >= it.len-1 {
+	if !(it.idx+1 < it.len) {
 		return false
 	}
 	it.idx++
@@ -71,7 +71,7 @@ func (it *readerSliceOfSlicesIterator) CurrentReaderAt(idx int) BlockReader {
 
 func (it *readerSliceOfSlicesIterator) Reset(blocks [][]BlockReader) {
 	it.blocks = blocks
-	it.resetIndex()
+	it.idx = -1
 	it.len = len(blocks)
 	it.closed = false
 }
@@ -103,12 +103,4 @@ func (it *readerSliceOfSlicesIterator) Size() (int, error) {
 		}
 	}
 	return size, nil
-}
-
-func (it *readerSliceOfSlicesIterator) Rewind() {
-	it.resetIndex()
-}
-
-func (it *readerSliceOfSlicesIterator) resetIndex() {
-	it.idx = -1
 }

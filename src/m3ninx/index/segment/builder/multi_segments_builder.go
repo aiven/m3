@@ -36,6 +36,7 @@ type builderFromSegments struct {
 	idSet          *IDsMap
 	segments       []segmentMetadata
 	termsIter      *termsIterFromSegments
+	offset         postings.ID
 	segmentsOffset postings.ID
 }
 
@@ -59,7 +60,9 @@ func NewBuilderFromSegments(opts Options) segment.SegmentsBuilder {
 	}
 }
 
-func (b *builderFromSegments) Reset() {
+func (b *builderFromSegments) Reset(offset postings.ID) {
+	b.offset = offset
+
 	// Reset the documents slice
 	var emptyDoc doc.Document
 	for i := range b.docs {
@@ -149,12 +152,13 @@ func (b *builderFromSegments) Docs() []doc.Document {
 }
 
 func (b *builderFromSegments) AllDocs() (index.IDDocIterator, error) {
-	rangeIter := postings.NewRangeIterator(0, postings.ID(len(b.docs)))
+	rangeIter := postings.NewRangeIterator(b.offset,
+		b.offset+postings.ID(len(b.docs)))
 	return index.NewIDDocIterator(b, rangeIter), nil
 }
 
 func (b *builderFromSegments) Doc(id postings.ID) (doc.Document, error) {
-	idx := int(id)
+	idx := int(id - b.offset)
 	if idx < 0 || idx >= len(b.docs) {
 		return doc.Document{}, errDocNotFound
 	}

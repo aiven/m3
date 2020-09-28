@@ -561,22 +561,13 @@ func newPromTSIter(timeseries []prompb.TimeSeries, tagOpts models.TagOptions) (*
 		datapoints       = make([]ts.Datapoints, 0, len(timeseries))
 		seriesAttributes = make([]ts.SeriesAttributes, 0, len(timeseries))
 	)
-
-	graphiteTagOpts := tagOpts.SetIDSchemeType(models.TypeGraphite)
 	for _, promTS := range timeseries {
 		attributes, err := storage.PromTimeSeriesToSeriesAttributes(promTS)
 		if err != nil {
 			return nil, err
 		}
-
-		// Set the tag options based on the incoming source.
-		opts := tagOpts
-		if attributes.Source == ts.SourceTypeGraphite {
-			opts = graphiteTagOpts
-		}
-
 		seriesAttributes = append(seriesAttributes, attributes)
-		tags = append(tags, storage.PromLabelsToM3Tags(promTS.Labels, opts))
+		tags = append(tags, storage.PromLabelsToM3Tags(promTS.Labels, tagOpts))
 		datapoints = append(datapoints, storage.PromSamplesToM3Datapoints(promTS.Samples))
 	}
 
@@ -609,7 +600,7 @@ func (i *promTSIter) Current() ingest.IterValue {
 	value := ingest.IterValue{
 		Tags:       i.tags[i.idx],
 		Datapoints: i.datapoints[i.idx],
-		Attributes: i.attributes[i.idx],
+		Attributes: ts.DefaultSeriesAttributes(),
 		Unit:       xtime.Millisecond,
 	}
 	if i.idx < len(i.metadatas) {

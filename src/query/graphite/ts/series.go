@@ -136,12 +136,7 @@ func (b *Series) Resolution() time.Duration {
 
 // StepAtTime returns the step within the block containing the given time
 func (b *Series) StepAtTime(t time.Time) int {
-	step := int(t.UnixNano()/1000000-b.startTime.UnixNano()/1000000) / b.vals.MillisPerStep()
-	if step < 0 {
-		return 0
-	}
-
-	return step
+	return int(t.UnixNano()/1000000-b.startTime.UnixNano()/1000000) / b.vals.MillisPerStep()
 }
 
 // StartTimeForStep returns the time at which the given step starts

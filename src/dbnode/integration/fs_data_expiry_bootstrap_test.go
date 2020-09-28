@@ -28,7 +28,12 @@ import (
 
 	"github.com/m3db/m3/src/dbnode/integration/generate"
 	"github.com/m3db/m3/src/dbnode/namespace"
+	"github.com/m3db/m3/src/dbnode/persist/fs"
 	"github.com/m3db/m3/src/dbnode/retention"
+	"github.com/m3db/m3/src/dbnode/storage/bootstrap"
+	"github.com/m3db/m3/src/dbnode/storage/bootstrap/bootstrapper"
+	bfs "github.com/m3db/m3/src/dbnode/storage/bootstrap/bootstrapper/fs"
+	"github.com/m3db/m3/src/dbnode/storage/bootstrap/result"
 
 	"github.com/stretchr/testify/require"
 )
@@ -60,10 +65,31 @@ func TestFilesystemDataExpiryBootstrap(t *testing.T) {
 	defer setup.Close()
 
 	log := setup.StorageOpts().InstrumentOptions().Logger()
+	fsOpts := setup.StorageOpts().CommitLogOptions().FilesystemOptions()
 
-	require.NoError(t, setup.InitializeBootstrappers(InitializeBootstrappersOptions{
-		WithFileSystem: true,
-	}))
+	persistMgr, err := fs.NewPersistManager(fsOpts)
+	require.NoError(t, err)
+
+	noOpAll := bootstrapper.NewNoOpAllBootstrapperProvider()
+	bsOpts := result.NewOptions().
+		SetSeriesCachePolicy(setup.StorageOpts().SeriesCachePolicy())
+	storageIdxOpts := setup.StorageOpts().IndexOptions()
+	bfsOpts := bfs.NewOptions().
+		SetResultOptions(bsOpts).
+		SetIndexOptions(storageIdxOpts).
+		SetFilesystemOptions(fsOpts).
+		SetPersistManager(persistMgr).
+		SetCompactor(newCompactor(t, storageIdxOpts))
+	bs, err := bfs.NewFileSystemBootstrapperProvider(bfsOpts, noOpAll)
+	require.NoError(t, err)
+	processOpts := bootstrap.NewProcessOptions().
+		SetTopologyMapProvider(setup).
+		SetOrigin(setup.Origin())
+	processProvider, err := bootstrap.NewProcessProvider(bs, processOpts, bsOpts)
+	require.NoError(t, err)
+
+	setup.SetStorageOpts(setup.StorageOpts().
+		SetBootstrapProcessProvider(processProvider))
 
 	// Write test data
 	now := setup.NowFn()()

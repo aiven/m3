@@ -170,7 +170,7 @@ func (c *grpcClient) fetchRaw(
 
 		receivedMeta := decodeResultMetadata(result.GetMeta())
 		meta = meta.CombineMetadata(receivedMeta)
-		iters, err := DecodeCompressedFetchResponse(result, pools)
+		iters, err := decodeCompressedFetchResponse(result, pools)
 		if err != nil {
 			return fetchResult, err
 		}

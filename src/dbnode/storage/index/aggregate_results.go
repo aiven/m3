@@ -118,7 +118,6 @@ func (r *aggregatedResults) AggregateResultsOptions() AggregateResultsOptions {
 
 func (r *aggregatedResults) AddFields(batch []AggregateResultsEntry) (int, int) {
 	r.Lock()
-	valueInsertions := 0
 	for _, entry := range batch {
 		f := entry.Field
 		aggValues, ok := r.resultsMap.Get(f)
@@ -144,7 +143,6 @@ func (r *aggregatedResults) AddFields(batch []AggregateResultsEntry) (int, int) 
 					NoCopyKey:     true,
 					NoFinalizeKey: false,
 				})
-				valueInsertions++
 			} else {
 				// because we already have a entry for this term, we release the ident back to
 				// the underlying pool.
@@ -153,7 +151,7 @@ func (r *aggregatedResults) AddFields(batch []AggregateResultsEntry) (int, int) 
 		}
 	}
 	size := r.resultsMap.Len()
-	docsCount := r.totalDocsCount + valueInsertions
+	docsCount := r.totalDocsCount + len(batch)
 	r.totalDocsCount = docsCount
 	r.Unlock()
 	return size, docsCount

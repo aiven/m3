@@ -27,9 +27,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/m3db/m3/src/metrics/generated/proto/metricpb"
-	xerrors "github.com/m3db/m3/src/x/errors"
-
 	"github.com/cespare/xxhash/v2"
 )
 
@@ -259,16 +256,6 @@ func (t Tags) Normalize() Tags {
 // Validate will validate there are tag values, and the
 // tags are ordered and there are no duplicates.
 func (t Tags) Validate() error {
-	// Wrap call to validate to make sure a validation error
-	// is always an invalid parameters error so we return bad request
-	// instead of internal server error at higher in the stack.
-	if err := t.validate(); err != nil {
-		return xerrors.NewInvalidParamsError(err)
-	}
-	return nil
-}
-
-func (t Tags) validate() error {
 	n := t.Len()
 	if n == 0 {
 		return errNoTags
@@ -286,28 +273,24 @@ func (t Tags) validate() error {
 			}
 
 			if !tags.Less(i-1, i) {
-				return fmt.Errorf("graphite tags out of order: '%s' appears after"+
-					" '%s', tags: %v", tags.Tags[i-1].Name, tags.Tags[i].Name, tags.Tags)
+				return fmt.Errorf("tags out of order: '%s' appears after '%s'",
+					tags.Tags[i-1].Name, tags.Tags[i].Name)
 			}
 
 			prev := tags.Tags[i-1]
 			if bytes.Compare(prev.Name, tag.Name) == 0 {
-				return fmt.Errorf("tags duplicate: '%s' appears more than once",
-					tags.Tags[i-1].Name)
+				return fmt.Errorf("tags duplicate: '%s' appears more than once in '%s'",
+					tags.Tags[i-1].Name, t)
 			}
 		}
 	} else {
-		var (
-			allowTagNameDuplicates = t.Opts.AllowTagNameDuplicates()
-			allowTagValueEmpty     = t.Opts.AllowTagValueEmpty()
-		)
 		// Sorted alphanumerically otherwise, use bytes.Compare once for
 		// both order and unique test.
 		for i, tag := range t.Tags {
 			if len(tag.Name) == 0 {
 				return fmt.Errorf("tag name empty: index=%d", i)
 			}
-			if !allowTagValueEmpty && len(tag.Value) == 0 {
+			if len(tag.Value) == 0 {
 				return fmt.Errorf("tag value empty: index=%d, name=%s",
 					i, t.Tags[i].Name)
 			}
@@ -318,10 +301,10 @@ func (t Tags) validate() error {
 			prev := t.Tags[i-1]
 			cmp := bytes.Compare(prev.Name, t.Tags[i].Name)
 			if cmp > 0 {
-				return fmt.Errorf("tags out of order: '%s' appears after '%s', tags: %v",
-					prev.Name, tag.Name, t.Tags)
+				return fmt.Errorf("tags out of order: '%s' appears after '%s'",
+					prev.Name, tag.Name)
 			}
-			if !allowTagNameDuplicates && cmp == 0 {
+			if cmp == 0 {
 				return fmt.Errorf("tags duplicate: '%s' appears more than once in '%s'",
 					prev.Name, t)
 			}
@@ -386,26 +369,6 @@ func (t Tags) String() string {
 		sb.WriteString(tt.String())
 	}
 	return sb.String()
-}
-
-// TagsFromProto converts proto tags to models.Tags.
-func TagsFromProto(pbTags []*metricpb.Tag) []Tag {
-	tags := make([]Tag, 0, len(pbTags))
-	for _, tag := range pbTags {
-		tags = append(tags, Tag{
-			Name:  tag.Name,
-			Value: tag.Value,
-		})
-	}
-	return tags
-}
-
-// ToProto converts the models.Tags to proto tags.
-func (t Tag) ToProto() *metricpb.Tag {
-	return &metricpb.Tag{
-		Name:  t.Name,
-		Value: t.Value,
-	}
 }
 
 // String returns the string representation of the tag.

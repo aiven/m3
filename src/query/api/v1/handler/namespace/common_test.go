@@ -22,7 +22,6 @@ package namespace
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/m3db/m3/src/cluster/kv"
@@ -32,38 +31,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type storeOptionsMatcher struct {
-	zone        string
-	namespace   string
-	environment string
-}
-
-func (s storeOptionsMatcher) Matches(x interface{}) bool {
-	opts := x.(kv.OverrideOptions)
-	if s.zone != "" && s.zone != opts.Zone() {
-		return false
-	}
-	if s.namespace != "" && s.namespace != opts.Namespace() {
-		return false
-	}
-	if s.environment != "" && s.environment != opts.Environment() {
-		return false
-	}
-	return true
-}
-
-func (s storeOptionsMatcher) String() string {
-	return fmt.Sprintf("checks that zone=%s, namespace=%s, environment=%s", s.zone, s.namespace, s.environment)
-}
-
-func newStoreOptionsMatcher(zone, namespace, environment string) gomock.Matcher {
-	return storeOptionsMatcher{
-		zone:        zone,
-		namespace:   namespace,
-		environment: environment,
-	}
-}
 
 func TestMetadata(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -89,7 +56,7 @@ func TestMetadata(t *testing.T) {
 
 	registry := nsproto.Registry{
 		Namespaces: map[string]*nsproto.NamespaceOptions{
-			"metrics-ns1": {
+			"metrics-ns1": &nsproto.NamespaceOptions{
 				BootstrapEnabled:  true,
 				FlushEnabled:      true,
 				WritesToCommitLog: false,
@@ -104,7 +71,7 @@ func TestMetadata(t *testing.T) {
 					BlockDataExpiryAfterNotAccessPeriodNanos: 5000000000,
 				},
 			},
-			"metrics-ns2": {
+			"metrics-ns2": &nsproto.NamespaceOptions{
 				BootstrapEnabled:  true,
 				FlushEnabled:      true,
 				WritesToCommitLog: true,

@@ -41,7 +41,6 @@ import (
 	"github.com/m3db/m3/src/dbnode/namespace"
 	"github.com/m3db/m3/src/dbnode/sharding"
 	"github.com/m3db/m3/src/dbnode/storage/block"
-	"github.com/m3db/m3/src/dbnode/storage/limits"
 	"github.com/m3db/m3/src/dbnode/ts"
 	"github.com/m3db/m3/src/dbnode/x/xio"
 	"github.com/m3db/m3/src/x/checked"
@@ -80,11 +79,9 @@ const (
 type blockRetriever struct {
 	sync.RWMutex
 
-	opts           BlockRetrieverOptions
-	fsOpts         Options
-	logger         *zap.Logger
-	queryLimits    limits.QueryLimits
-	bytesReadLimit limits.LookbackLimit
+	opts   BlockRetrieverOptions
+	fsOpts Options
+	logger *zap.Logger
 
 	newSeekerMgrFn newSeekerMgrFn
 
@@ -93,8 +90,7 @@ type blockRetriever struct {
 	idPool     ident.Pool
 	nsMetadata namespace.Metadata
 
-	blockSize               time.Duration
-	nsCacheBlocksOnRetrieve bool
+	blockSize time.Duration
 
 	status                     blockRetrieverStatus
 	reqsByShardIdx             []*shardRetrieveRequests
@@ -117,8 +113,6 @@ func NewBlockRetriever(
 		opts:           opts,
 		fsOpts:         fsOpts,
 		logger:         fsOpts.InstrumentOptions().Logger(),
-		queryLimits:    opts.QueryLimits(),
-		bytesReadLimit: opts.QueryLimits().BytesReadLimit(),
 		newSeekerMgrFn: NewSeekerManager,
 		reqPool:        opts.RetrieveRequestPool(),
 		bytesPool:      opts.BytesPool(),
@@ -152,9 +146,8 @@ func (r *blockRetriever) Open(
 	r.status = blockRetrieverOpen
 	r.seekerMgr = seekerMgr
 
-	// Cache blockSize result and namespace specific block caching option
+	// Cache blockSize result
 	r.blockSize = ns.Options().RetentionOptions().BlockSize()
-	r.nsCacheBlocksOnRetrieve = ns.Options().CacheBlocksOnRetrieve()
 
 	for i := 0; i < r.opts.FetchConcurrency(); i++ {
 		go r.fetchLoop(seekerMgr)
@@ -295,13 +288,6 @@ func (r *blockRetriever) fetchBatch(
 	reqs []*retrieveRequest,
 	seekerResources ReusableSeekerResources,
 ) {
-	if err := r.queryLimits.AnyExceeded(); err != nil {
-		for _, req := range reqs {
-			req.onError(err)
-		}
-		return
-	}
-
 	// Resolve the seeker from the seeker mgr
 	seeker, err := seekerMgr.Borrow(shard, blockStart)
 	if err != nil {
@@ -313,22 +299,10 @@ func (r *blockRetriever) fetchBatch(
 
 	// Sort the requests by offset into the file before seeking
 	// to ensure all seeks are in ascending order
-	var limitErr error
 	for _, req := range reqs {
-		if limitErr != nil {
-			req.onError(limitErr)
-			continue
-		}
-
 		entry, err := seeker.SeekIndexEntry(req.id, seekerResources)
 		if err != nil && err != errSeekIDNotFound {
 			req.onError(err)
-			continue
-		}
-
-		if err := r.bytesReadLimit.Inc(int(entry.Size)); err != nil {
-			req.onError(err)
-			limitErr = err
 			continue
 		}
 
@@ -340,8 +314,6 @@ func (r *blockRetriever) fetchBatch(
 	sort.Sort(retrieveRequestByOffsetAsc(reqs))
 
 	tagDecoderPool := r.fsOpts.TagDecoderPool()
-
-	blockCachingEnabled := r.opts.CacheBlocksOnRetrieve() && r.nsCacheBlocksOnRetrieve
 
 	// Seek and execute all requests
 	for _, req := range reqs {
@@ -370,7 +342,7 @@ func (r *blockRetriever) fetchBatch(
 		}
 
 		// We don't need to call onRetrieve.OnRetrieveBlock if the ID was not found.
-		callOnRetrieve := blockCachingEnabled && req.onRetrieve != nil && req.foundAndHasNoError()
+		callOnRetrieve := req.onRetrieve != nil && req.foundAndHasNoError()
 		if callOnRetrieve {
 			// NB(r): Need to also trigger callback with a copy of the data.
 			// This is used by the database to cache the in memory data for

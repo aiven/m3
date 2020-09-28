@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/m3db/m3/src/m3ninx/index"
-	"github.com/m3db/m3/src/m3ninx/index/segment"
 	"github.com/m3db/m3/src/m3ninx/index/segment/fst"
 	"github.com/m3db/m3/src/m3ninx/postings/roaring"
 
@@ -44,9 +43,9 @@ func TestReadThroughSegmentMatchRegexp(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	seg := fst.NewMockSegment(ctrl)
-	reader := segment.NewMockReader(ctrl)
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment := fst.NewMockSegment(ctrl)
+	reader := index.NewMockReader(ctrl)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	cache, stopReporting, err := NewPostingsListCache(1, testPostingListCacheOptions)
 	require.NoError(t, err)
@@ -60,7 +59,7 @@ func TestReadThroughSegmentMatchRegexp(t *testing.T) {
 	}
 
 	readThrough, err := NewReadThroughSegment(
-		seg, cache, defaultReadThroughSegmentOptions).Reader()
+		segment, cache, defaultReadThroughSegmentOptions).Reader()
 	require.NoError(t, err)
 
 	originalPL := roaring.NewPostingsList()
@@ -83,9 +82,9 @@ func TestReadThroughSegmentMatchRegexpCacheDisabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	seg := fst.NewMockSegment(ctrl)
-	reader := segment.NewMockReader(ctrl)
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment := fst.NewMockSegment(ctrl)
+	reader := index.NewMockReader(ctrl)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	cache, stopReporting, err := NewPostingsListCache(1, testPostingListCacheOptions)
 	require.NoError(t, err)
@@ -98,7 +97,7 @@ func TestReadThroughSegmentMatchRegexpCacheDisabled(t *testing.T) {
 		FSTSyntax: parsedRegex,
 	}
 
-	readThrough, err := NewReadThroughSegment(seg, cache, ReadThroughSegmentOptions{
+	readThrough, err := NewReadThroughSegment(segment, cache, ReadThroughSegmentOptions{
 		CacheRegexp: false,
 	}).Reader()
 	require.NoError(t, err)
@@ -127,20 +126,20 @@ func TestReadThroughSegmentMatchRegexpNoCache(t *testing.T) {
 	defer ctrl.Finish()
 
 	var (
-		seg              = fst.NewMockSegment(ctrl)
-		reader           = segment.NewMockReader(ctrl)
+		segment          = fst.NewMockSegment(ctrl)
+		reader           = index.NewMockReader(ctrl)
 		field            = []byte("some-field")
 		parsedRegex, err = syntax.Parse(".*this-will-be-slow.*", syntax.Simple)
 	)
 	require.NoError(t, err)
 
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment.EXPECT().Reader().Return(reader, nil)
 	compiledRegex := index.CompiledRegex{
 		FSTSyntax: parsedRegex,
 	}
 
 	readThrough, err := NewReadThroughSegment(
-		seg, nil, defaultReadThroughSegmentOptions).Reader()
+		segment, nil, defaultReadThroughSegmentOptions).Reader()
 	require.NoError(t, err)
 
 	originalPL := roaring.NewPostingsList()
@@ -157,9 +156,9 @@ func TestReadThroughSegmentMatchTerm(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	seg := fst.NewMockSegment(ctrl)
-	reader := segment.NewMockReader(ctrl)
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment := fst.NewMockSegment(ctrl)
+	reader := index.NewMockReader(ctrl)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	cache, stopReporting, err := NewPostingsListCache(1, testPostingListCacheOptions)
 	require.NoError(t, err)
@@ -174,7 +173,7 @@ func TestReadThroughSegmentMatchTerm(t *testing.T) {
 	require.NoError(t, originalPL.Insert(1))
 
 	readThrough, err := NewReadThroughSegment(
-		seg, cache, defaultReadThroughSegmentOptions).Reader()
+		segment, cache, defaultReadThroughSegmentOptions).Reader()
 	require.NoError(t, err)
 
 	reader.EXPECT().MatchTerm(field, term).Return(originalPL, nil)
@@ -195,9 +194,9 @@ func TestReadThroughSegmentMatchTermCacheDisabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	seg := fst.NewMockSegment(ctrl)
-	reader := segment.NewMockReader(ctrl)
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment := fst.NewMockSegment(ctrl)
+	reader := index.NewMockReader(ctrl)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	cache, stopReporting, err := NewPostingsListCache(1, testPostingListCacheOptions)
 	require.NoError(t, err)
@@ -211,7 +210,7 @@ func TestReadThroughSegmentMatchTermCacheDisabled(t *testing.T) {
 	)
 	require.NoError(t, originalPL.Insert(1))
 
-	readThrough, err := NewReadThroughSegment(seg, cache, ReadThroughSegmentOptions{
+	readThrough, err := NewReadThroughSegment(segment, cache, ReadThroughSegmentOptions{
 		CacheTerms: false,
 	}).Reader()
 	require.NoError(t, err)
@@ -238,8 +237,8 @@ func TestReadThroughSegmentMatchTermNoCache(t *testing.T) {
 	defer ctrl.Finish()
 
 	var (
-		seg    = fst.NewMockSegment(ctrl)
-		reader = segment.NewMockReader(ctrl)
+		segment = fst.NewMockSegment(ctrl)
+		reader  = index.NewMockReader(ctrl)
 
 		field = []byte("some-field")
 		term  = []byte("some-term")
@@ -248,10 +247,10 @@ func TestReadThroughSegmentMatchTermNoCache(t *testing.T) {
 	)
 	require.NoError(t, originalPL.Insert(1))
 
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	readThrough, err := NewReadThroughSegment(
-		seg, nil, defaultReadThroughSegmentOptions).Reader()
+		segment, nil, defaultReadThroughSegmentOptions).Reader()
 	require.NoError(t, err)
 
 	reader.EXPECT().MatchTerm(field, term).Return(originalPL, nil)
@@ -298,9 +297,9 @@ func TestReadThroughSegmentMatchField(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	seg := fst.NewMockSegment(ctrl)
-	reader := segment.NewMockReader(ctrl)
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment := fst.NewMockSegment(ctrl)
+	reader := index.NewMockReader(ctrl)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	cache, stopReporting, err := NewPostingsListCache(1, testPostingListCacheOptions)
 	require.NoError(t, err)
@@ -314,7 +313,7 @@ func TestReadThroughSegmentMatchField(t *testing.T) {
 	require.NoError(t, originalPL.Insert(1))
 
 	readThrough, err := NewReadThroughSegment(
-		seg, cache, defaultReadThroughSegmentOptions).Reader()
+		segment, cache, defaultReadThroughSegmentOptions).Reader()
 	require.NoError(t, err)
 
 	reader.EXPECT().MatchField(field).Return(originalPL, nil)
@@ -335,9 +334,9 @@ func TestReadThroughSegmentMatchFieldCacheDisabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	seg := fst.NewMockSegment(ctrl)
-	reader := segment.NewMockReader(ctrl)
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment := fst.NewMockSegment(ctrl)
+	reader := index.NewMockReader(ctrl)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	cache, stopReporting, err := NewPostingsListCache(1, testPostingListCacheOptions)
 	require.NoError(t, err)
@@ -350,7 +349,7 @@ func TestReadThroughSegmentMatchFieldCacheDisabled(t *testing.T) {
 	)
 	require.NoError(t, originalPL.Insert(1))
 
-	readThrough, err := NewReadThroughSegment(seg, cache, ReadThroughSegmentOptions{
+	readThrough, err := NewReadThroughSegment(segment, cache, ReadThroughSegmentOptions{
 		CacheTerms: false,
 	}).Reader()
 	require.NoError(t, err)
@@ -377,8 +376,8 @@ func TestReadThroughSegmentMatchFieldNoCache(t *testing.T) {
 	defer ctrl.Finish()
 
 	var (
-		seg    = fst.NewMockSegment(ctrl)
-		reader = segment.NewMockReader(ctrl)
+		segment = fst.NewMockSegment(ctrl)
+		reader  = index.NewMockReader(ctrl)
 
 		field = []byte("some-field")
 
@@ -386,10 +385,10 @@ func TestReadThroughSegmentMatchFieldNoCache(t *testing.T) {
 	)
 	require.NoError(t, originalPL.Insert(1))
 
-	seg.EXPECT().Reader().Return(reader, nil)
+	segment.EXPECT().Reader().Return(reader, nil)
 
 	readThrough, err := NewReadThroughSegment(
-		seg, nil, defaultReadThroughSegmentOptions).Reader()
+		segment, nil, defaultReadThroughSegmentOptions).Reader()
 	require.NoError(t, err)
 
 	reader.EXPECT().MatchField(field).Return(originalPL, nil)
@@ -404,12 +403,12 @@ func TestCloseNoCache(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	seg := fst.NewMockSegment(ctrl)
+	segment := fst.NewMockSegment(ctrl)
 
 	readThrough := NewReadThroughSegment(
-		seg, nil, defaultReadThroughSegmentOptions)
+		segment, nil, defaultReadThroughSegmentOptions)
 
-	seg.EXPECT().Close().Return(nil)
+	segment.EXPECT().Close().Return(nil)
 	err := readThrough.Close()
 	require.NoError(t, err)
 	require.True(t, readThrough.(*ReadThroughSegment).closed)

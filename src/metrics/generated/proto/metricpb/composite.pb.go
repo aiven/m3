@@ -50,7 +50,6 @@
 		Gauge
 		TimedMetric
 		ForwardedMetric
-		Tag
 */
 package metricpb
 

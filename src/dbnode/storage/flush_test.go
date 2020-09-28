@@ -34,7 +34,6 @@ import (
 	"github.com/m3db/m3/src/dbnode/retention"
 	"github.com/m3db/m3/src/x/ident"
 	xtest "github.com/m3db/m3/src/x/test"
-	xtime "github.com/m3db/m3/src/x/time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -142,12 +141,17 @@ func TestFlushManagerFlushAlreadyInProgress(t *testing.T) {
 		// Allow the flush to finish.
 		doneCh <- struct{}{}
 
-		// Allow the snapshot to begin and finish.
+		// Wait until we start the compaction process.
 		<-startCh
 
 		// Ensure it doesn't allow a parallel flush.
 		require.Equal(t, errFlushOperationsInProgress, fm.Flush(now))
 
+		// Allow the compaction to finish.
+		doneCh <- struct{}{}
+
+		// Allow the snapshot to begin and finish.
+		<-startCh
 		doneCh <- struct{}{}
 	}()
 
@@ -167,8 +171,11 @@ func TestFlushManagerFlushDoneFlushError(t *testing.T) {
 		mockSnapshotPersist = persist.NewMockSnapshotPreparer(ctrl)
 	)
 
-	mockFlushPersist.EXPECT().DoneFlush().Return(fakeErr)
-	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil)
+	gomock.InOrder(
+		mockFlushPersist.EXPECT().DoneFlush().Return(fakeErr),
+		mockFlushPersist.EXPECT().DoneFlush().Return(nil),
+	)
+	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil).Times(2)
 
 	mockSnapshotPersist.EXPECT().DoneSnapshot(gomock.Any(), testCommitlogFile).Return(nil)
 	mockPersistManager.EXPECT().StartSnapshotPersist(gomock.Any()).Return(mockSnapshotPersist, nil)
@@ -206,8 +213,8 @@ func TestFlushManagerNamespaceFlushTimesErr(t *testing.T) {
 	)
 
 	// Make sure DoneFlush is called despite encountering an error, once for snapshot and once for warm flush.
-	mockFlushPersist.EXPECT().DoneFlush().Return(nil)
-	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil)
+	mockFlushPersist.EXPECT().DoneFlush().Return(nil).Times(2)
+	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil).Times(2)
 
 	mockSnapshotPersist.EXPECT().DoneSnapshot(gomock.Any(), testCommitlogFile).Return(nil)
 	mockPersistManager.EXPECT().StartSnapshotPersist(gomock.Any()).Return(mockSnapshotPersist, nil)
@@ -225,6 +232,7 @@ func TestFlushManagerNamespaceFlushTimesErr(t *testing.T) {
 	ns.EXPECT().Options().Return(nsOpts).AnyTimes()
 	ns.EXPECT().ID().Return(defaultTestNs1ID).AnyTimes()
 	ns.EXPECT().NeedsFlush(gomock.Any(), gomock.Any()).Return(false, fakeErr).AnyTimes()
+	ns.EXPECT().ColdFlush(gomock.Any()).Return(nil).AnyTimes()
 	ns.EXPECT().Snapshot(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	db.EXPECT().OwnedNamespaces().Return([]databaseNamespace{ns}, nil)
 
@@ -251,8 +259,8 @@ func TestFlushManagerFlushDoneSnapshotError(t *testing.T) {
 		mockSnapshotPersist = persist.NewMockSnapshotPreparer(ctrl)
 	)
 
-	mockFlushPersist.EXPECT().DoneFlush().Return(nil)
-	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil)
+	mockFlushPersist.EXPECT().DoneFlush().Return(nil).Times(2)
+	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil).Times(2)
 
 	mockSnapshotPersist.EXPECT().DoneSnapshot(gomock.Any(), testCommitlogFile).Return(fakeErr)
 	mockPersistManager.EXPECT().StartSnapshotPersist(gomock.Any()).Return(mockSnapshotPersist, nil)
@@ -286,8 +294,8 @@ func TestFlushManagerFlushDoneIndexError(t *testing.T) {
 		mockPersistManager  = persist.NewMockManager(ctrl)
 	)
 
-	mockFlushPersist.EXPECT().DoneFlush().Return(nil)
-	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil)
+	mockFlushPersist.EXPECT().DoneFlush().Return(nil).Times(2)
+	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil).Times(2)
 
 	mockSnapshotPersist.EXPECT().DoneSnapshot(gomock.Any(), testCommitlogFile).Return(nil)
 	mockPersistManager.EXPECT().StartSnapshotPersist(gomock.Any()).Return(mockSnapshotPersist, nil)
@@ -322,6 +330,7 @@ func TestFlushManagerSkipNamespaceIndexingDisabled(t *testing.T) {
 	ns.EXPECT().ID().Return(defaultTestNs1ID).AnyTimes()
 	ns.EXPECT().NeedsFlush(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 	ns.EXPECT().WarmFlush(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	ns.EXPECT().ColdFlush(gomock.Any()).Return(nil).AnyTimes()
 	ns.EXPECT().Snapshot(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	var (
@@ -330,8 +339,8 @@ func TestFlushManagerSkipNamespaceIndexingDisabled(t *testing.T) {
 		mockPersistManager  = persist.NewMockManager(ctrl)
 	)
 
-	mockFlushPersist.EXPECT().DoneFlush().Return(nil)
-	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil)
+	mockFlushPersist.EXPECT().DoneFlush().Return(nil).Times(2)
+	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil).Times(2)
 
 	mockSnapshotPersist.EXPECT().DoneSnapshot(gomock.Any(), testCommitlogFile).Return(nil)
 	mockPersistManager.EXPECT().StartSnapshotPersist(gomock.Any()).Return(mockSnapshotPersist, nil)
@@ -365,6 +374,7 @@ func TestFlushManagerNamespaceIndexingEnabled(t *testing.T) {
 	ns.EXPECT().ID().Return(defaultTestNs1ID).AnyTimes()
 	ns.EXPECT().NeedsFlush(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 	ns.EXPECT().WarmFlush(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	ns.EXPECT().ColdFlush(gomock.Any()).Return(nil).AnyTimes()
 	ns.EXPECT().Snapshot(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	ns.EXPECT().FlushIndex(gomock.Any()).Return(nil)
 
@@ -374,8 +384,8 @@ func TestFlushManagerNamespaceIndexingEnabled(t *testing.T) {
 		mockPersistManager  = persist.NewMockManager(ctrl)
 	)
 
-	mockFlushPersist.EXPECT().DoneFlush().Return(nil)
-	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil)
+	mockFlushPersist.EXPECT().DoneFlush().Return(nil).Times(2)
+	mockPersistManager.EXPECT().StartFlushPersist().Return(mockFlushPersist, nil).Times(2)
 
 	mockSnapshotPersist.EXPECT().DoneSnapshot(gomock.Any(), testCommitlogFile).Return(nil)
 	mockPersistManager.EXPECT().StartSnapshotPersist(gomock.Any()).Return(mockSnapshotPersist, nil)
@@ -543,10 +553,13 @@ func TestFlushManagerFlushSnapshot(t *testing.T) {
 			ns.EXPECT().NeedsFlush(st, st).Return(false, nil)
 		}
 
+		ns.EXPECT().ColdFlush(gomock.Any())
+
 		snapshotEnd := now.Add(bufferFuture).Truncate(blockSize)
 		num = numIntervals(start, snapshotEnd, blockSize)
 		for i := 0; i < num; i++ {
 			st := start.Add(time.Duration(i) * blockSize)
+			ns.EXPECT().NeedsFlush(st, st).Return(true, nil)
 			ns.EXPECT().Snapshot(st, now, gomock.Any())
 		}
 	}
@@ -555,7 +568,7 @@ func TestFlushManagerFlushSnapshot(t *testing.T) {
 
 	lastSuccessfulSnapshot, ok := fm.LastSuccessfulSnapshotStartTime()
 	require.True(t, ok)
-	require.Equal(t, xtime.ToUnixNano(now), lastSuccessfulSnapshot)
+	require.Equal(t, now, lastSuccessfulSnapshot)
 }
 
 type timesInOrder []time.Time

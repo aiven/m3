@@ -31,7 +31,6 @@ import (
 	"github.com/m3db/m3/src/dbnode/retention"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uber-go/tally"
 )
 
 func TestCommitLogBootstrap(t *testing.T) {
@@ -80,7 +79,7 @@ func testCommitLogBootstrap(t *testing.T, setTestOpts setTestOptions, updateInpu
 	now := setup.NowFn()()
 	seriesMaps := generateSeriesMaps(30, updateInputConfig, now.Add(-2*blockSize), now.Add(-blockSize))
 	log.Info("writing data")
-	writes := writeCommitLogData(t, setup, commitLogOpts, seriesMaps, ns1, false)
+	writeCommitLogData(t, setup, commitLogOpts, seriesMaps, ns1, false)
 	log.Info("finished writing data")
 
 	// Setup bootstrapper after writing data so filesystem inspection can find it.
@@ -110,6 +109,4 @@ func testCommitLogBootstrap(t *testing.T, setTestOpts setTestOptions, updateInpu
 	observedSeriesMaps2 := testSetupToSeriesMaps(t, setup, ns2, metadatasByShard2)
 	verifySeriesMapsEqual(t, emptySeriesMaps, observedSeriesMaps2)
 
-	counters := commitLogOpts.InstrumentOptions().MetricsScope().(tally.TestScope).Snapshot().Counters()
-	require.Equal(t, writes, int(counters["bootstrapper-commitlog.commitlog.entries-read+"].Value()))
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/m3db/m3/src/dbnode/clock"
 	"github.com/m3db/m3/src/dbnode/encoding"
 	"github.com/m3db/m3/src/dbnode/retention"
-	m3dbruntime "github.com/m3db/m3/src/dbnode/runtime"
 	"github.com/m3db/m3/src/dbnode/storage/block"
 	"github.com/m3db/m3/src/x/context"
 	"github.com/m3db/m3/src/x/ident"
@@ -47,7 +46,6 @@ type options struct {
 	coldWritesEnabled             bool
 	bufferBucketPool              *BufferBucketPool
 	bufferBucketVersionsPool      *BufferBucketVersionsPool
-	runtimeOptsMgr                m3dbruntime.OptionsManager
 }
 
 // NewOptions creates new database series options
@@ -219,14 +217,4 @@ func (o *options) SetBufferBucketPool(value *BufferBucketPool) Options {
 
 func (o *options) BufferBucketPool() *BufferBucketPool {
 	return o.bufferBucketPool
-}
-
-func (o *options) SetRuntimeOptionsManager(value m3dbruntime.OptionsManager) Options {
-	opts := *o
-	opts.runtimeOptsMgr = value
-	return &opts
-}
-
-func (o *options) RuntimeOptionsManager() m3dbruntime.OptionsManager {
-	return o.runtimeOptsMgr
 }

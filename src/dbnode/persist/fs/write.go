@@ -29,6 +29,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/m3db/bloom"
 	"github.com/m3db/m3/src/dbnode/digest"
 	"github.com/m3db/m3/src/dbnode/persist"
 	"github.com/m3db/m3/src/dbnode/persist/fs/msgpack"
@@ -38,7 +39,6 @@ import (
 	"github.com/m3db/m3/src/x/serialize"
 	xtime "github.com/m3db/m3/src/x/time"
 
-	"github.com/m3db/bloom/v4"
 	"github.com/pborman/uuid"
 )
 
@@ -88,18 +88,14 @@ type writer struct {
 
 type indexEntry struct {
 	index           int64
+	metadata        persist.Metadata
 	dataFileOffset  int64
 	indexFileOffset int64
 	size            uint32
 	dataChecksum    uint32
 }
 
-type indexEntryWithMetadata struct {
-	entry    indexEntry
-	metadata persist.Metadata
-}
-
-type indexEntries []indexEntryWithMetadata
+type indexEntries []indexEntry
 
 func (e indexEntries) releaseRefs() {
 	// Close any metadata.
@@ -107,7 +103,7 @@ func (e indexEntries) releaseRefs() {
 		elem.metadata.Finalize()
 	}
 	// Apply memset zero loop optimization.
-	var zeroed indexEntryWithMetadata
+	var zeroed indexEntry
 	for i := range e {
 		e[i] = zeroed
 	}
@@ -144,7 +140,7 @@ func NewWriter(opts Options) (DataFileSetWriter, error) {
 		bloomFilterFdWithDigest:         digest.NewFdWithDigestWriter(bufferSize),
 		dataFdWithDigest:                digest.NewFdWithDigestWriter(bufferSize),
 		digestFdWithDigestContents:      digest.NewFdWithDigestContentsWriter(bufferSize),
-		encoder:                         msgpack.NewEncoderWithOptions(opts.EncodingOptions()),
+		encoder:                         msgpack.NewEncoder(),
 		digestBuf:                       digest.NewBuffer(),
 		singleCheckedBytes:              make([]checked.Bytes, 1),
 		tagsIterator:                    ident.NewTagsIterator(ident.Tags{}),
@@ -301,14 +297,12 @@ func (w *writer) writeAll(
 		return nil
 	}
 
-	entry := indexEntryWithMetadata{
-		entry: indexEntry{
-			index:          w.currIdx,
-			dataFileOffset: w.currOffset,
-			size:           uint32(size),
-			dataChecksum:   dataChecksum,
-		},
-		metadata: metadata,
+	entry := indexEntry{
+		index:          w.currIdx,
+		metadata:       metadata,
+		dataFileOffset: w.currOffset,
+		size:           uint32(size),
+		dataChecksum:   dataChecksum,
 	}
 	for _, d := range data {
 		if d == nil {
@@ -375,10 +369,6 @@ func (w *writer) close() error {
 		return err
 	}
 
-	return w.closeWOIndex()
-}
-
-func (w *writer) closeWOIndex() error {
 	if err := w.digestFdWithDigestContents.WriteDigests(
 		w.infoFdWithDigest.Digest().Sum32(),
 		w.indexFdWithDigest.Digest().Sum32(),
@@ -412,9 +402,6 @@ func (w *writer) writeIndexRelatedFiles() error {
 
 	// Write the index entries and calculate the bloom filter
 	n, p := uint(w.currIdx), w.bloomFilterFalsePositivePercent
-	if n == 0 {
-		n = 1
-	}
 	m, k := bloom.EstimateFalsePositiveRate(n, p)
 	bloomFilter := bloom.NewBloomFilter(m, k)
 
@@ -440,7 +427,7 @@ func (w *writer) writeIndexRelatedFiles() error {
 		return err
 	}
 
-	return w.writeInfoFileContents(bloomFilter, summaries, w.currIdx)
+	return w.writeInfoFileContents(bloomFilter, summaries)
 }
 
 func (w *writer) writeIndexFileContents(
@@ -477,6 +464,40 @@ func (w *writer) writeIndexFileContents(
 			return err
 		}
 
+		var encodedTags []byte
+		if numTags := tagsIter.Remaining(); numTags > 0 {
+			tagsEncoder.Reset()
+			if err := tagsEncoder.Encode(tagsIter); err != nil {
+				return err
+			}
+
+			encodedTagsData, ok := tagsEncoder.Data()
+			if !ok {
+				return errWriterEncodeTagsDataNotAccessible
+			}
+
+			encodedTags = encodedTagsData.Bytes()
+		}
+
+		entry := schema.IndexEntry{
+			Index:        entry.index,
+			ID:           id,
+			Size:         int64(entry.size),
+			Offset:       entry.dataFileOffset,
+			DataChecksum: int64(entry.dataChecksum),
+			EncodedTags:  encodedTags,
+		}
+
+		w.encoder.Reset()
+		if err := w.encoder.EncodeIndexEntry(entry); err != nil {
+			return err
+		}
+
+		data := w.encoder.Bytes()
+		if _, err := w.indexFdWithDigest.Write(data); err != nil {
+			return err
+		}
+
 		// Add to the bloom filter, note this must be zero alloc or else this will
 		// cause heavy GC churn as we flush millions of series at end of each
 		// time window
@@ -485,70 +506,15 @@ func (w *writer) writeIndexFileContents(
 		if i%summaryEvery == 0 {
 			// Capture the offset for when we write this summary back, only capture
 			// for every summary we'll actually write to avoid a few memcopies
-			w.indexEntries[i].entry.indexFileOffset = offset
+			w.indexEntries[i].indexFileOffset = offset
 		}
 
-		length, err := w.writeIndex(id, tagsIter, tagsEncoder, entry.entry)
-		if err != nil {
-			return err
-		}
-		offset += length
+		offset += int64(len(data))
 
 		prevID = id
 	}
 
 	return nil
-}
-
-func (w *writer) writeIndex(
-	id []byte,
-	tagsIter ident.TagIterator,
-	tagsEncoder serialize.TagEncoder,
-	entry indexEntry,
-) (int64, error) {
-	var encodedTags []byte
-	if numTags := tagsIter.Remaining(); numTags > 0 {
-		tagsEncoder.Reset()
-		if err := tagsEncoder.Encode(tagsIter); err != nil {
-			return 0, err
-		}
-
-		encodedTagsData, ok := tagsEncoder.Data()
-		if !ok {
-			return 0, errWriterEncodeTagsDataNotAccessible
-		}
-
-		encodedTags = encodedTagsData.Bytes()
-	}
-
-	return w.writeIndexWithEncodedTags(id, encodedTags, entry)
-}
-
-func (w *writer) writeIndexWithEncodedTags(
-	id []byte,
-	encodedTags []byte,
-	entry indexEntry,
-) (int64, error) {
-	e := schema.IndexEntry{
-		Index:        entry.index,
-		ID:           id,
-		Size:         int64(entry.size),
-		Offset:       entry.dataFileOffset,
-		DataChecksum: int64(entry.dataChecksum),
-		EncodedTags:  encodedTags,
-	}
-
-	w.encoder.Reset()
-	if err := w.encoder.EncodeIndexEntry(e); err != nil {
-		return 0, err
-	}
-
-	data := w.encoder.Bytes()
-	if _, err := w.indexFdWithDigest.Write(data); err != nil {
-		return 0, err
-	}
-
-	return int64(len(data)), nil
 }
 
 func (w *writer) writeSummariesFileContents(
@@ -559,37 +525,27 @@ func (w *writer) writeSummariesFileContents(
 		if i%summaryEvery != 0 {
 			continue
 		}
-		err := w.writeSummariesEntry(w.indexEntries[i].metadata.BytesID(), w.indexEntries[i].entry)
-		if err != nil {
+
+		summary := schema.IndexSummary{
+			Index:            w.indexEntries[i].index,
+			ID:               w.indexEntries[i].metadata.BytesID(),
+			IndexEntryOffset: w.indexEntries[i].indexFileOffset,
+		}
+
+		w.encoder.Reset()
+		if err := w.encoder.EncodeIndexSummary(summary); err != nil {
 			return 0, err
 		}
+
+		data := w.encoder.Bytes()
+		if _, err := w.summariesFdWithDigest.Write(data); err != nil {
+			return 0, err
+		}
+
 		summaries++
 	}
 
 	return summaries, nil
-}
-
-func (w *writer) writeSummariesEntry(
-	id ident.BytesID,
-	entry indexEntry,
-) error {
-	summary := schema.IndexSummary{
-		Index:            entry.index,
-		ID:               id,
-		IndexEntryOffset: entry.indexFileOffset,
-	}
-
-	w.encoder.Reset()
-	if err := w.encoder.EncodeIndexSummary(summary); err != nil {
-		return err
-	}
-
-	data := w.encoder.Bytes()
-	if _, err := w.summariesFdWithDigest.Write(data); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (w *writer) writeBloomFilterFileContents(
@@ -601,7 +557,6 @@ func (w *writer) writeBloomFilterFileContents(
 func (w *writer) writeInfoFileContents(
 	bloomFilter *bloom.BloomFilter,
 	summaries int,
-	entriesCount int64,
 ) error {
 	snapshotBytes, err := w.snapshotID.MarshalBinary()
 	if err != nil {
@@ -614,7 +569,7 @@ func (w *writer) writeInfoFileContents(
 		SnapshotTime: xtime.ToNanoseconds(w.snapshotTime),
 		SnapshotID:   snapshotBytes,
 		BlockSize:    int64(w.blockSize),
-		Entries:      entriesCount,
+		Entries:      w.currIdx,
 		MajorVersion: schema.MajorVersion,
 		MinorVersion: schema.MinorVersion,
 		Summaries: schema.IndexSummariesInfo{

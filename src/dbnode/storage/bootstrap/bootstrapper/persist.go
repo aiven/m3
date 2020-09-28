@@ -193,9 +193,9 @@ func persistBootstrapIndexSegment(
 	if err := flush.DoneIndex(); err != nil {
 		return result.IndexBlock{}, err
 	}
-	segments := make([]result.Segment, 0, len(persistedSegments))
+	segments := make([]segment.Segment, 0, len(persistedSegments))
 	for _, pSeg := range persistedSegments {
-		segments = append(segments, result.NewSegment(pSeg, true))
+		segments = append(segments, NewSegment(pSeg, true))
 	}
 
 	return result.NewIndexBlock(segments, expectedRanges), nil
@@ -264,9 +264,7 @@ func BuildBootstrapIndexSegment(
 		return result.IndexBlock{}, err
 	}
 
-	segs := []result.Segment{result.NewSegment(seg, false)}
-	indexResult := result.NewIndexBlock(segs, expectedRanges)
-	return indexResult, nil
+	return result.NewIndexBlock([]segment.Segment{NewSegment(seg, false)}, expectedRanges), nil
 }
 
 // GetDefaultIndexBlockForBlockStart gets the index block for the default volume type from the index results.

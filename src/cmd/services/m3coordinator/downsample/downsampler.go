@@ -23,8 +23,6 @@ package downsample
 import (
 	"time"
 
-	"github.com/m3db/m3/src/query/ts"
-
 	"go.uber.org/zap/zapcore"
 )
 
@@ -58,7 +56,6 @@ type SamplesAppenderResult struct {
 type SampleAppenderOptions struct {
 	Override      bool
 	OverrideRules SamplesAppenderOverrideRules
-	MetricType    ts.MetricType
 }
 
 // SamplesAppenderOverrideRules provides override rules to
@@ -110,7 +107,6 @@ func newDownsampler(opts downsamplerOptions) (*downsampler, error) {
 		metricTagsIteratorPool:       opts.agg.pools.metricTagsIteratorPool,
 		debugLogging:                 debugLogging,
 		logger:                       logger,
-		augmentM3Tags:                opts.agg.m3PrefixFilter,
 	}
 
 	return &downsampler{

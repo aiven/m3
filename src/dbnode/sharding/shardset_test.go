@@ -25,6 +25,7 @@ import (
 
 	"github.com/m3db/m3/src/cluster/shard"
 	"github.com/m3db/m3/src/x/ident"
+
 	"github.com/stretchr/testify/require"
 )
 

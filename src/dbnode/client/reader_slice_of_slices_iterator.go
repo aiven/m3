@@ -189,7 +189,7 @@ func (it *readerSliceOfSlicesIterator) Close() {
 
 func (it *readerSliceOfSlicesIterator) Reset(segments []*rpc.Segments) {
 	it.segments = segments
-	it.resetIndex()
+	it.idx = -1
 	it.closed = false
 }
 
@@ -203,12 +203,4 @@ func (it *readerSliceOfSlicesIterator) Size() (int, error) {
 		size += seg.Len()
 	}
 	return size, nil
-}
-
-func (it *readerSliceOfSlicesIterator) Rewind() {
-	it.resetIndex()
-}
-
-func (it *readerSliceOfSlicesIterator) resetIndex() {
-	it.idx = -1
 }

@@ -27,7 +27,6 @@ import (
 	"testing"
 
 	"github.com/m3db/m3/src/cluster/generated/proto/placementpb"
-	"github.com/m3db/m3/src/cluster/kv"
 	"github.com/m3db/m3/src/cluster/placement"
 	"github.com/m3db/m3/src/cmd/services/m3query/config"
 	"github.com/m3db/m3/src/query/api/v1/handler/prometheus/handleroptions"
@@ -44,7 +43,7 @@ import (
 var (
 	setExistingTestPlacementProto = &placementpb.Placement{
 		Instances: map[string]*placementpb.Instance{
-			"host1": {
+			"host1": &placementpb.Instance{
 				Id:             "host1",
 				IsolationGroup: "rack1",
 				Zone:           "test",
@@ -57,7 +56,7 @@ var (
 	}
 	setNewTestPlacementProto = &placementpb.Placement{
 		Instances: map[string]*placementpb.Instance{
-			"host1": {
+			"host1": &placementpb.Instance{
 				Id:             "host1",
 				IsolationGroup: "rack1",
 				Zone:           "test",
@@ -66,7 +65,7 @@ var (
 				Hostname:       "host1",
 				Port:           1234,
 			},
-			"host2": {
+			"host2": &placementpb.Instance{
 				Id:             "host2",
 				IsolationGroup: "rack1",
 				Zone:           "test",
@@ -150,72 +149,5 @@ func TestPlacementSetHandler(t *testing.T) {
 		actual := xtest.MustPrettyJSONString(t, body)
 
 		assert.Equal(t, expected, actual, xtest.Diff(expected, actual))
-	})
-}
-
-func TestPlacementSetHandler_NewPlacement(t *testing.T) {
-	runForAllAllowedServices(func(serviceName string) {
-		var url string
-		switch serviceName {
-		case handleroptions.M3DBServiceName:
-			url = M3DBSetURL
-		case handleroptions.M3AggregatorServiceName:
-			url = M3AggSetURL
-		case handleroptions.M3CoordinatorServiceName:
-			url = M3CoordinatorSetURL
-		default:
-			require.FailNow(t, "unexpected service name")
-		}
-
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockClient, mockPlacementService := SetupPlacementTest(t, ctrl)
-		handlerOpts, err := NewHandlerOptions(
-			mockClient, config.Configuration{}, nil, instrument.NewOptions())
-		require.NoError(t, err)
-		handler := NewSetHandler(handlerOpts)
-
-		// Test placement init success
-		reqBody, err := (&jsonpb.Marshaler{}).MarshalToString(setTestPlacementReqProto)
-		require.NoError(t, err)
-
-		req := httptest.NewRequest(SetHTTPMethod, url, strings.NewReader(reqBody))
-		require.NotNil(t, req)
-
-		mockPlacementService.EXPECT().
-			Placement().
-			Return(nil, kv.ErrNotFound)
-
-		newPlacement, err := placement.NewPlacementFromProto(setNewTestPlacementProto)
-		require.NoError(t, err)
-
-		mockPlacementService.EXPECT().
-			SetIfNotExist(gomock.Any()).
-			Return(newPlacement, nil)
-
-		svcDefaults := handleroptions.ServiceNameAndDefaults{
-			ServiceName: serviceName,
-		}
-
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(svcDefaults, w, req)
-		resp := w.Result()
-		body := w.Body.String()
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-		expectedBody, err := (&jsonpb.Marshaler{
-			EmitDefaults: true,
-		}).MarshalToString(&admin.PlacementSetResponse{
-			Placement: setNewTestPlacementProto,
-			DryRun:    !setTestPlacementReqProto.Confirm,
-		})
-		require.NoError(t, err)
-
-		expected := xtest.MustPrettyJSONString(t, expectedBody)
-		actual := xtest.MustPrettyJSONString(t, body)
-
-		assert.Equal(t, expected, actual, xtest.Diff(expected, actual))
-		assert.Equal(t, 0, newPlacement.Version())
 	})
 }

@@ -114,7 +114,7 @@ func BenchmarkBootstrapIndex(b *testing.B) {
 				max     = time.Unix(0, 0)
 				ranges  = xtime.NewRanges()
 				entries = fs.ReadInfoFiles(dir, testNamespace, shard,
-					0, msgpack.NewDecodingOptions(), persist.FileSetFlushType)
+					0, msgpack.NewDecodingOptions())
 			)
 			for _, entry := range entries {
 				if entry.Err != nil {

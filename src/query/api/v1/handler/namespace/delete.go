@@ -31,7 +31,6 @@ import (
 	clusterclient "github.com/m3db/m3/src/cluster/client"
 	"github.com/m3db/m3/src/dbnode/namespace"
 	"github.com/m3db/m3/src/query/api/v1/handler"
-	"github.com/m3db/m3/src/query/api/v1/handler/prometheus/handleroptions"
 	"github.com/m3db/m3/src/query/util/logging"
 	"github.com/m3db/m3/src/x/instrument"
 	xhttp "github.com/m3db/m3/src/x/net/http"
@@ -78,11 +77,7 @@ func NewDeleteHandler(
 	}
 }
 
-func (h *DeleteHandler) ServeHTTP(
-	svc handleroptions.ServiceNameAndDefaults,
-	w http.ResponseWriter,
-	r *http.Request,
-) {
+func (h *DeleteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.WithContext(ctx, h.instrumentOpts)
 	id := strings.TrimSpace(mux.Vars(r)[namespaceIDVar])
@@ -92,8 +87,7 @@ func (h *DeleteHandler) ServeHTTP(
 		return
 	}
 
-	opts := handleroptions.NewServiceOptions(svc, r.Header, nil)
-	err := h.Delete(id, opts)
+	err := h.Delete(id)
 	if err != nil {
 		logger.Error("unable to delete namespace", zap.Error(err))
 		if err == errNamespaceNotFound {
@@ -112,8 +106,8 @@ func (h *DeleteHandler) ServeHTTP(
 }
 
 // Delete deletes a namespace.
-func (h *DeleteHandler) Delete(id string, opts handleroptions.ServiceOptions) error {
-	store, err := h.client.Store(opts.KVOverrideOptions())
+func (h *DeleteHandler) Delete(id string) error {
+	store, err := h.client.KV()
 	if err != nil {
 		return err
 	}

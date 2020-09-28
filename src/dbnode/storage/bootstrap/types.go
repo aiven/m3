@@ -224,13 +224,8 @@ type Namespace struct {
 // NamespaceRunOptions are the run options for a bootstrap process run.
 type NamespaceRunOptions struct {
 	// ShardTimeRanges are the time ranges for the shards that should be fulfilled
-	// by the bootstrapper. This changes each bootstrapper pass as time ranges are fulfilled.
+	// by the bootstrapper.
 	ShardTimeRanges result.ShardTimeRanges
-	// TargetShardTimeRanges are the original target time ranges for shards and does not change
-	// each bootstrapper pass.
-	// NB(bodu): This is used by the commit log bootstrapper as it needs to run for the entire original
-	// target shard time ranges.
-	TargetShardTimeRanges result.ShardTimeRanges
 	// RunOptions are the run options for the bootstrap run.
 	RunOptions RunOptions
 }

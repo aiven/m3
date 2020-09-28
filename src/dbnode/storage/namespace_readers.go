@@ -73,8 +73,6 @@ type databaseNamespaceReaderManager interface {
 
 	put(reader fs.DataFileSetReader) error
 
-	latestVolume(shard uint32, blockStart time.Time) (int, error)
-
 	assignShardSet(shardSet sharding.ShardSet)
 
 	tick()

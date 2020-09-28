@@ -25,31 +25,31 @@ import (
 	"math"
 	"sync/atomic"
 
-	"github.com/m3db/m3/src/x/unsafe"
-
 	"github.com/uber-go/tally"
-	"golang.org/x/sys/cpu"
 )
 
 var (
-	errPoolAlreadyInitialized      = errors.New("object pool already initialized")
-	errPoolAccessBeforeInitialized = errors.New("object pool accessed before it was initialized")
+	errPoolAlreadyInitialized   = errors.New("object pool already initialized")
+	errPoolGetBeforeInitialized = errors.New("object pool get before initialized")
+	errPoolPutBeforeInitialized = errors.New("object pool put before initialized")
 )
 
-const sampleObjectPoolLengthEvery = 2048
+const (
+	// TODO(r): Use tally sampling when available
+	sampleObjectPoolLengthEvery = 100
+)
 
 type objectPool struct {
-	_                   cpu.CacheLinePad
+	opts                ObjectPoolOptions
 	values              chan interface{}
-	_                   cpu.CacheLinePad
 	alloc               Allocator
-	metrics             objectPoolMetrics
-	onPoolAccessErrorFn OnPoolAccessErrorFn
 	size                int
 	refillLowWatermark  int
 	refillHighWatermark int
 	filling             int32
 	initialized         int32
+	dice                int32
+	metrics             objectPoolMetrics
 }
 
 type objectPoolMetrics struct {
@@ -68,7 +68,9 @@ func NewObjectPool(opts ObjectPoolOptions) ObjectPool {
 	m := opts.InstrumentOptions().MetricsScope()
 
 	p := &objectPool{
-		size: opts.Size(),
+		opts:   opts,
+		values: make(chan interface{}, opts.Size()),
+		size:   opts.Size(),
 		refillLowWatermark: int(math.Ceil(
 			opts.RefillLowWatermark() * float64(opts.Size()))),
 		refillHighWatermark: int(math.Ceil(
@@ -79,12 +81,6 @@ func NewObjectPool(opts ObjectPoolOptions) ObjectPool {
 			getOnEmpty: m.Counter("get-on-empty"),
 			putOnFull:  m.Counter("put-on-full"),
 		},
-		onPoolAccessErrorFn: opts.OnPoolAccessErrorFn(),
-		alloc: func() interface{} {
-			fn := opts.OnPoolAccessErrorFn()
-			fn(errPoolAccessBeforeInitialized)
-			return nil
-		},
 	}
 
 	p.setGauges()
@@ -94,37 +90,36 @@ func NewObjectPool(opts ObjectPoolOptions) ObjectPool {
 
 func (p *objectPool) Init(alloc Allocator) {
 	if !atomic.CompareAndSwapInt32(&p.initialized, 0, 1) {
-		p.onPoolAccessErrorFn(errPoolAlreadyInitialized)
+		fn := p.opts.OnPoolAccessErrorFn()
+		fn(errPoolAlreadyInitialized)
 		return
 	}
 
-	p.values = make(chan interface{}, p.size)
+	p.alloc = alloc
+
 	for i := 0; i < cap(p.values); i++ {
-		p.values <- alloc()
+		p.values <- p.alloc()
 	}
 
-	p.alloc = alloc
 	p.setGauges()
 }
 
 func (p *objectPool) Get() interface{} {
-	var (
-		metrics = p.metrics
-		v       interface{}
-	)
+	if atomic.LoadInt32(&p.initialized) != 1 {
+		fn := p.opts.OnPoolAccessErrorFn()
+		fn(errPoolGetBeforeInitialized)
+		return p.alloc()
+	}
 
+	var v interface{}
 	select {
 	case v = <-p.values:
 	default:
 		v = p.alloc()
-		metrics.getOnEmpty.Inc(1)
+		p.metrics.getOnEmpty.Inc(1)
 	}
 
-	if unsafe.Fastrandn(sampleObjectPoolLengthEvery) == 0 {
-		// inlined setGauges()
-		metrics.free.Update(float64(len(p.values)))
-		metrics.total.Update(float64(p.size))
-	}
+	p.trySetGauges()
 
 	if p.refillLowWatermark > 0 && len(p.values) <= p.refillLowWatermark {
 		p.tryFill()
@@ -134,14 +129,24 @@ func (p *objectPool) Get() interface{} {
 }
 
 func (p *objectPool) Put(obj interface{}) {
-	if p.values == nil {
-		p.onPoolAccessErrorFn(errPoolAccessBeforeInitialized)
+	if atomic.LoadInt32(&p.initialized) != 1 {
+		fn := p.opts.OnPoolAccessErrorFn()
+		fn(errPoolPutBeforeInitialized)
 		return
 	}
+
 	select {
 	case p.values <- obj:
 	default:
 		p.metrics.putOnFull.Inc(1)
+	}
+
+	p.trySetGauges()
+}
+
+func (p *objectPool) trySetGauges() {
+	if atomic.AddInt32(&p.dice, 1)%sampleObjectPoolLengthEvery == 0 {
+		p.setGauges()
 	}
 }
 

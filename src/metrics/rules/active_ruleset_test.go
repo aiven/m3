@@ -34,7 +34,6 @@ import (
 	"github.com/m3db/m3/src/metrics/pipeline/applied"
 	"github.com/m3db/m3/src/metrics/policy"
 	"github.com/m3db/m3/src/metrics/transformation"
-	"github.com/m3db/m3/src/query/models"
 	xtime "github.com/m3db/m3/src/x/time"
 
 	"github.com/google/go-cmp/cmp"
@@ -3227,7 +3226,6 @@ func testMappingRules(t *testing.T) []*mappingRule {
 	)
 	require.NoError(t, err)
 
-	tags := []models.Tag{{Name: []byte("service")}}
 	mappingRule1 := &mappingRule{
 		uuid: "mappingRule1",
 		snapshots: []*mappingRuleSnapshot{
@@ -3240,7 +3238,6 @@ func testMappingRules(t *testing.T) []*mappingRule {
 				storagePolicies: policy.StoragePolicies{
 					policy.NewStoragePolicy(10*time.Second, xtime.Second, 24*time.Hour),
 				},
-				tags: tags,
 			},
 			&mappingRuleSnapshot{
 				name:          "mappingRule1.snapshot1",
@@ -3251,7 +3248,6 @@ func testMappingRules(t *testing.T) []*mappingRule {
 				storagePolicies: policy.StoragePolicies{
 					policy.NewStoragePolicy(10*time.Second, xtime.Second, 12*time.Hour),
 				},
-				tags: tags,
 			},
 			&mappingRuleSnapshot{
 				name:          "mappingRule1.snapshot2",
@@ -3264,7 +3260,6 @@ func testMappingRules(t *testing.T) []*mappingRule {
 					policy.NewStoragePolicy(5*time.Minute, xtime.Minute, 48*time.Hour),
 					policy.NewStoragePolicy(10*time.Minute, xtime.Minute, 48*time.Hour),
 				},
-				tags: tags,
 			},
 			&mappingRuleSnapshot{
 				name:          "mappingRule1.snapshot3",
@@ -3275,7 +3270,6 @@ func testMappingRules(t *testing.T) []*mappingRule {
 				storagePolicies: policy.StoragePolicies{
 					policy.NewStoragePolicy(30*time.Second, xtime.Second, 6*time.Hour),
 				},
-				tags: tags,
 			},
 		},
 	}

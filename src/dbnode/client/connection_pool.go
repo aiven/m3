@@ -32,9 +32,8 @@ import (
 	"github.com/m3db/m3/src/dbnode/generated/thrift/rpc"
 	"github.com/m3db/m3/src/dbnode/topology"
 	xclose "github.com/m3db/m3/src/x/close"
-	murmur3 "github.com/m3db/stackmurmur3/v2"
 
-	"github.com/uber-go/tally"
+	"github.com/spaolacci/murmur3"
 	"github.com/uber/tchannel-go/thrift"
 	"go.uber.org/zap"
 )
@@ -64,7 +63,6 @@ type connPool struct {
 	sleepHealth        sleepFn
 	sleepHealthRetry   sleepFn
 	status             status
-	healthStatus       tally.Gauge
 }
 
 type conn struct {
@@ -82,7 +80,7 @@ type healthCheckFn func(client rpc.TChanNode, opts Options) error
 type sleepFn func(t time.Duration)
 
 func newConnectionPool(host topology.Host, opts Options) connectionPool {
-	seed := int64(murmur3.StringSum32(host.Address()))
+	seed := int64(murmur3.Sum32([]byte(host.Address())))
 
 	p := &connPool{
 		opts:               opts,
@@ -96,7 +94,6 @@ func newConnectionPool(host topology.Host, opts Options) connectionPool {
 		sleepConnect:       time.Sleep,
 		sleepHealth:        time.Sleep,
 		sleepHealthRetry:   time.Sleep,
-		healthStatus:       opts.InstrumentOptions().MetricsScope().Gauge("health-status"),
 	}
 
 	return p
@@ -189,13 +186,11 @@ func (p *connPool) connectEvery(interval time.Duration, stutter time.Duration) {
 
 				// Health check the connection
 				if err := p.healthCheckNewConn(client, p.opts); err != nil {
-					p.maybeEmitHealthStatus(healthStatusCheckFailed)
 					log.Debug("could not connect, failed health check", zap.String("host", address), zap.Error(err))
 					channel.Close()
 					return
 				}
 
-				p.maybeEmitHealthStatus(healthStatusOK)
 				p.Lock()
 				if p.status == statusOpen {
 					p.pool = append(p.pool, conn{channel, client})
@@ -208,12 +203,6 @@ func (p *connPool) connectEvery(interval time.Duration, stutter time.Duration) {
 		wg.Wait()
 
 		p.sleepConnect(interval + randStutter(p.connectRand, stutter))
-	}
-}
-
-func (p *connPool) maybeEmitHealthStatus(hs healthStatus) {
-	if p.opts.HostQueueEmitsHealthStatus() {
-		p.healthStatus.Update(float64(hs))
 	}
 }
 

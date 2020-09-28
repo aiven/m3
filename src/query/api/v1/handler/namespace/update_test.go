@@ -36,7 +36,6 @@ import (
 	xjson "github.com/m3db/m3/src/x/json"
 	xtest "github.com/m3db/m3/src/x/test"
 
-	"github.com/gogo/protobuf/types"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -102,13 +101,12 @@ func TestNamespaceUpdateHandler(t *testing.T) {
 	registry := nsproto.Registry{
 		Namespaces: map[string]*nsproto.NamespaceOptions{
 			"testNamespace": {
-				BootstrapEnabled:      true,
-				CacheBlocksOnRetrieve: &types.BoolValue{Value: true},
-				FlushEnabled:          true,
-				SnapshotEnabled:       true,
-				WritesToCommitLog:     true,
-				CleanupEnabled:        false,
-				RepairEnabled:         false,
+				BootstrapEnabled:  true,
+				FlushEnabled:      true,
+				SnapshotEnabled:   true,
+				WritesToCommitLog: true,
+				CleanupEnabled:    false,
+				RepairEnabled:     false,
 				RetentionOptions: &nsproto.RetentionOptions{
 					RetentionPeriodNanos:                     172800000000000,
 					BlockSizeNanos:                           7200000000000,
@@ -138,12 +136,11 @@ func TestNamespaceUpdateHandler(t *testing.T) {
 			"registry": xjson.Map{
 				"namespaces": xjson.Map{
 					"testNamespace": xjson.Map{
-						"bootstrapEnabled":      true,
-						"cacheBlocksOnRetrieve": true,
-						"flushEnabled":          true,
-						"writesToCommitLog":     true,
-						"cleanupEnabled":        false,
-						"repairEnabled":         false,
+						"bootstrapEnabled":  true,
+						"flushEnabled":      true,
+						"writesToCommitLog": true,
+						"cleanupEnabled":    false,
+						"repairEnabled":     false,
 						"retentionOptions": xjson.Map{
 							"retentionPeriodNanos":                     "345600000000000",
 							"blockSizeNanos":                           "7200000000000",
@@ -193,12 +190,11 @@ func TestNamespaceUpdateHandler(t *testing.T) {
 			"registry": xjson.Map{
 				"namespaces": xjson.Map{
 					"testNamespace": xjson.Map{
-						"bootstrapEnabled":      true,
-						"cacheBlocksOnRetrieve": true,
-						"flushEnabled":          true,
-						"writesToCommitLog":     true,
-						"cleanupEnabled":        false,
-						"repairEnabled":         false,
+						"bootstrapEnabled":  true,
+						"flushEnabled":      true,
+						"writesToCommitLog": true,
+						"cleanupEnabled":    false,
+						"repairEnabled":     false,
 						"retentionOptions": xjson.Map{
 							"retentionPeriodNanos":                     "172800000000000",
 							"blockSizeNanos":                           "7200000000000",

@@ -186,7 +186,7 @@ func (w *fstSegmentDataWriter) WriteFile(fileType IndexSegmentFileType, iow io.W
 
 func (w *fstSegmentDataWriter) writeDocsData(iow io.Writer) error {
 	if r := w.data.DocsReader; r != nil {
-		iter := r.Iter()
+		iter := r.AllDocs()
 		closer := x.NewSafeCloser(iter)
 		defer closer.Close()
 		w.docsWriter.Reset(fst.DocumentsWriterOptions{

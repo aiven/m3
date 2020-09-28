@@ -35,7 +35,6 @@ import (
 	"github.com/m3db/m3/src/query/storage/m3"
 	testm3 "github.com/m3db/m3/src/query/test/m3"
 	"github.com/m3db/m3/src/query/ts"
-	xerrors "github.com/m3db/m3/src/x/errors"
 	"github.com/m3db/m3/src/x/ident"
 	"github.com/m3db/m3/src/x/instrument"
 	xsync "github.com/m3db/m3/src/x/sync"
@@ -81,20 +80,6 @@ var (
 			},
 		},
 	)
-	testBadTags = models.NewTags(3, nil).AddTags([]models.Tag{
-		{
-			Name:  []byte("standard_tag"),
-			Value: []byte("standard_tag_value"),
-		},
-		{
-			Name:  []byte("duplicate_tag"),
-			Value: []byte("duplicate_tag_value0"),
-		},
-		{
-			Name:  []byte("duplicate_tag"),
-			Value: []byte("duplicate_tag_value1"),
-		},
-	})
 
 	testDatapoints1 = []ts.Datapoint{
 		{
@@ -227,28 +212,6 @@ func TestDownsampleAndWrite(t *testing.T) {
 	err := downAndWrite.Write(
 		context.Background(), testTags1, testDatapoints1, xtime.Second, testAnnotation1, defaultOverride)
 	require.NoError(t, err)
-}
-
-func TestDownsampleAndWriteWithBadTags(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	downAndWrite, _, _ := newTestDownsamplerAndWriter(t, ctrl,
-		testDownsamplerAndWriterOptions{})
-
-	err := downAndWrite.Write(
-		context.Background(), testBadTags, testDatapoints1, xtime.Second, testAnnotation1, defaultOverride)
-	require.Error(t, err)
-
-	// Make sure we get a validation error for downsample code path
-	// and for the raw unaggregate write code path.
-	multiErr, ok := err.(xerrors.MultiError)
-	require.True(t, ok)
-	require.Equal(t, 2, multiErr.NumErrors())
-	// Make sure all are invalid params errors.
-	for _, err := range multiErr.Errors() {
-		require.True(t, xerrors.IsInvalidParams(err))
-	}
 }
 
 func TestDownsampleAndWriteWithDownsampleOverridesAndNoMappingRules(t *testing.T) {
@@ -494,63 +457,6 @@ func TestDownsampleAndWriteBatch(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDownsampleAndWriteBatchBadTags(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	downAndWrite, downsampler, session := newTestDownsamplerAndWriter(t, ctrl,
-		testDownsamplerAndWriterOptions{})
-
-	var (
-		mockSamplesAppender = downsample.NewMockSamplesAppender(ctrl)
-		mockMetricsAppender = downsample.NewMockMetricsAppender(ctrl)
-	)
-
-	entries := []testIterEntry{
-		{tags: testBadTags, datapoints: testDatapoints1, attributes: testAttributesGauge, annotation: testAnnotation1},
-		{tags: testTags2, datapoints: testDatapoints2, attributes: testAttributesGauge, annotation: testAnnotation2},
-	}
-
-	// Only expect to write non-bad tags.
-	mockMetricsAppender.
-		EXPECT().
-		SamplesAppender(zeroDownsamplerAppenderOpts).
-		Return(downsample.SamplesAppenderResult{SamplesAppender: mockSamplesAppender}, nil).Times(1)
-	for _, tag := range testTags2.Tags {
-		mockMetricsAppender.EXPECT().AddTag(tag.Name, tag.Value)
-	}
-	for _, dp := range testDatapoints2 {
-		mockSamplesAppender.EXPECT().AppendGaugeTimedSample(dp.Timestamp, dp.Value)
-	}
-	downsampler.EXPECT().NewMetricsAppender().Return(mockMetricsAppender, nil)
-
-	mockMetricsAppender.EXPECT().NextMetric().Times(2)
-	mockMetricsAppender.EXPECT().Finalize()
-
-	// Only expect to write non-bad tags.
-	for _, entry := range testEntries[1:] {
-		for _, dp := range entry.datapoints {
-			session.EXPECT().WriteTagged(
-				gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), dp.Value, gomock.Any(), entry.annotation,
-			)
-		}
-	}
-
-	iter := newTestIter(entries)
-	err := downAndWrite.WriteBatch(context.Background(), iter, WriteOptions{})
-	require.Error(t, err)
-
-	// Make sure we get a validation error for downsample code path
-	// and for the raw unaggregate write code path.
-	multiErr, ok := err.(xerrors.MultiError)
-	require.True(t, ok)
-	require.Equal(t, 2, multiErr.NumErrors())
-	// Make sure all are invalid params errors.
-	for _, err := range multiErr.Errors() {
-		require.True(t, xerrors.IsInvalidParams(err))
-	}
-}
-
 func TestDownsampleAndWriteBatchDifferentTypes(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -565,12 +471,8 @@ func TestDownsampleAndWriteBatchDifferentTypes(t *testing.T) {
 
 	mockMetricsAppender.
 		EXPECT().
-		SamplesAppender(downsample.SampleAppenderOptions{MetricType: ts.MetricTypeCounter}).
-		Return(downsample.SamplesAppenderResult{SamplesAppender: mockSamplesAppender}, nil).Times(1)
-	mockMetricsAppender.
-		EXPECT().
-		SamplesAppender(downsample.SampleAppenderOptions{MetricType: ts.MetricTypeTimer}).
-		Return(downsample.SamplesAppenderResult{SamplesAppender: mockSamplesAppender}, nil).Times(1)
+		SamplesAppender(zeroDownsamplerAppenderOpts).
+		Return(downsample.SamplesAppenderResult{SamplesAppender: mockSamplesAppender}, nil).Times(2)
 	for _, tag := range testTags1.Tags {
 		mockMetricsAppender.EXPECT().AddTag(tag.Name, tag.Value)
 	}
@@ -707,7 +609,6 @@ func TestDownsampleAndWriteBatchOverrideDownsampleRules(t *testing.T) {
 		for _, tag := range entry.tags.Tags {
 			mockMetricsAppender.EXPECT().AddTag(tag.Name, tag.Value)
 		}
-		// We will also get the common gauge tag.
 		for _, dp := range entry.datapoints {
 			mockSamplesAppender.EXPECT().AppendGaugeTimedSample(dp.Timestamp, dp.Value)
 		}

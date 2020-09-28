@@ -29,7 +29,6 @@ import (
 
 	"github.com/m3db/m3/src/query/graphite/graphite"
 	"github.com/m3db/m3/src/query/util/writer"
-	xerrors "github.com/m3db/m3/src/x/errors"
 	xtest "github.com/m3db/m3/src/x/test"
 
 	"github.com/cespare/xxhash/v2"
@@ -426,26 +425,13 @@ func TestWriteTagLengthMeta(t *testing.T) {
 func TestTagsValidateEmptyNameQuoted(t *testing.T) {
 	tags := NewTags(0, NewTagOptions().SetIDSchemeType(TypeQuoted))
 	tags = tags.AddTag(Tag{Name: []byte(""), Value: []byte("bar")})
-	err := tags.Validate()
-	require.Error(t, err)
-	require.True(t, xerrors.IsInvalidParams(err))
+	require.Error(t, tags.Validate())
 }
 
 func TestTagsValidateEmptyValueQuoted(t *testing.T) {
 	tags := NewTags(0, NewTagOptions().SetIDSchemeType(TypeQuoted))
 	tags = tags.AddTag(Tag{Name: []byte("foo"), Value: []byte("")})
-	err := tags.Validate()
-	require.Error(t, err)
-	require.True(t, xerrors.IsInvalidParams(err))
-}
-
-func TestTagsValidateEmptyValueQuotedWithAllowTagValueEmpty(t *testing.T) {
-	tags := NewTags(0, NewTagOptions().
-		SetIDSchemeType(TypeQuoted).
-		SetAllowTagValueEmpty(true))
-	tags = tags.AddTag(Tag{Name: []byte("foo"), Value: []byte("")})
-	err := tags.Validate()
-	require.NoError(t, err)
+	require.Error(t, tags.Validate())
 }
 
 func TestTagsValidateOutOfOrderQuoted(t *testing.T) {
@@ -460,9 +446,7 @@ func TestTagsValidateOutOfOrderQuoted(t *testing.T) {
 			Value: []byte("baz"),
 		},
 	}
-	err := tags.Validate()
-	require.Error(t, err)
-	require.True(t, xerrors.IsInvalidParams(err))
+	require.Error(t, tags.Validate())
 
 	// Test fixes after normalize.
 	tags.Normalize()
@@ -483,37 +467,13 @@ func TestTagsValidateDuplicateQuoted(t *testing.T) {
 		Name:  []byte("foo"),
 		Value: []byte("qux"),
 	})
-	err := tags.Validate()
-	require.Error(t, err)
-	require.True(t, xerrors.IsInvalidParams(err))
-}
-
-func TestTagsValidateDuplicateQuotedWithAllowTagNameDuplicates(t *testing.T) {
-	tags := NewTags(0, NewTagOptions().
-		SetIDSchemeType(TypeQuoted).
-		SetAllowTagNameDuplicates(true))
-	tags = tags.AddTag(Tag{
-		Name:  []byte("foo"),
-		Value: []byte("bar"),
-	})
-	tags = tags.AddTag(Tag{
-		Name:  []byte("bar"),
-		Value: []byte("baz"),
-	})
-	tags = tags.AddTag(Tag{
-		Name:  []byte("foo"),
-		Value: []byte("qux"),
-	})
-	err := tags.Validate()
-	require.NoError(t, err)
+	require.Error(t, tags.Validate())
 }
 
 func TestTagsValidateEmptyNameGraphite(t *testing.T) {
 	tags := NewTags(0, NewTagOptions().SetIDSchemeType(TypeGraphite))
 	tags = tags.AddTag(Tag{Name: nil, Value: []byte("bar")})
-	err := tags.Validate()
-	require.Error(t, err)
-	require.True(t, xerrors.IsInvalidParams(err))
+	require.Error(t, tags.Validate())
 }
 
 func TestTagsValidateOutOfOrderGraphite(t *testing.T) {
@@ -528,9 +488,7 @@ func TestTagsValidateOutOfOrderGraphite(t *testing.T) {
 			Value: []byte("bar"),
 		},
 	}
-	err := tags.Validate()
-	require.Error(t, err)
-	require.True(t, xerrors.IsInvalidParams(err))
+	require.Error(t, tags.Validate())
 
 	// Test fixes after normalize.
 	tags.Normalize()
@@ -551,9 +509,7 @@ func TestTagsValidateDuplicateGraphite(t *testing.T) {
 		Name:  graphite.TagName(1),
 		Value: []byte("baz"),
 	})
-	err := tags.Validate()
-	require.Error(t, err)
-	require.True(t, xerrors.IsInvalidParams(err))
+	require.Error(t, tags.Validate())
 }
 
 func buildTags(b *testing.B, count, length int, opts TagOptions, escape bool) Tags {

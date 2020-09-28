@@ -34,15 +34,19 @@ var postingsIterRoaringPoolingConfig = roaring.ContainerPoolingConfiguration{
 	MaxArraySize:                    0,
 	MaxRunsSize:                     0,
 	AllocateBitmap:                  false,
-	MaxCapacity:                     0,
+	MaxCapacity:                     128,
 	MaxKeysAndContainersSliceLength: 128 * 10,
+}
+
+type postingsListRetriever interface {
+	UnmarshalPostingsListBitmap(b *roaring.Bitmap, offset uint64) error
 }
 
 type fstTermsPostingsIter struct {
 	bitmap   *roaring.Bitmap
 	postings postings.List
 
-	seg       *fsSegment
+	retriever postingsListRetriever
 	termsIter *fstTermsIter
 	currTerm  []byte
 	err       error
@@ -62,19 +66,19 @@ var _ sgmt.TermsIterator = &fstTermsPostingsIter{}
 
 func (f *fstTermsPostingsIter) clear() {
 	f.bitmap.Reset()
-	f.seg = nil
+	f.retriever = nil
 	f.termsIter = nil
 	f.currTerm = nil
 	f.err = nil
 }
 
 func (f *fstTermsPostingsIter) reset(
-	seg *fsSegment,
+	retriever postingsListRetriever,
 	termsIter *fstTermsIter,
 ) {
 	f.clear()
 
-	f.seg = seg
+	f.retriever = retriever
 	f.termsIter = termsIter
 }
 
@@ -89,12 +93,8 @@ func (f *fstTermsPostingsIter) Next() bool {
 	}
 
 	f.currTerm = f.termsIter.Current()
-	currOffset := f.termsIter.CurrentOffset()
-
-	f.seg.RLock()
-	f.err = f.seg.unmarshalPostingsListBitmapNotClosedMaybeFinalizedWithLock(f.bitmap,
-		currOffset)
-	f.seg.RUnlock()
+	f.err = f.retriever.UnmarshalPostingsListBitmap(f.bitmap,
+		f.termsIter.CurrentOffset())
 
 	return f.err == nil
 }

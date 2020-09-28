@@ -31,21 +31,21 @@ var (
 )
 
 func newFilterFieldsIterator(
-	reader segment.Reader,
+	seg segment.Segment,
 	fields AggregateFieldFilter,
 ) (segment.FieldsIterator, error) {
 	if len(fields) == 0 {
 		return nil, errNoFiltersSpecified
 	}
 	return &filterFieldsIterator{
-		reader:     reader,
+		seg:        seg,
 		fields:     fields,
 		currentIdx: -1,
 	}, nil
 }
 
 type filterFieldsIterator struct {
-	reader segment.Reader
+	seg    segment.Segment
 	fields AggregateFieldFilter
 
 	err        error
@@ -63,7 +63,7 @@ func (f *filterFieldsIterator) Next() bool {
 	for f.currentIdx < len(f.fields) {
 		field := f.fields[f.currentIdx]
 
-		ok, err := f.reader.ContainsField(field)
+		ok, err := f.seg.ContainsField(field)
 		if err != nil {
 			f.err = err
 			return false

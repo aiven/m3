@@ -29,12 +29,10 @@ import (
 	"github.com/m3db/m3/src/metrics/errors"
 	"github.com/m3db/m3/src/metrics/filters"
 	"github.com/m3db/m3/src/metrics/generated/proto/aggregationpb"
-	"github.com/m3db/m3/src/metrics/generated/proto/metricpb"
 	"github.com/m3db/m3/src/metrics/generated/proto/policypb"
 	"github.com/m3db/m3/src/metrics/generated/proto/rulepb"
 	"github.com/m3db/m3/src/metrics/policy"
 	"github.com/m3db/m3/src/metrics/rules/view"
-	"github.com/m3db/m3/src/query/models"
 	xtime "github.com/m3db/m3/src/x/time"
 
 	"github.com/google/go-cmp/cmp"
@@ -141,7 +139,6 @@ var (
 			},
 		},
 		DropPolicy: policypb.DropPolicy_NONE,
-		Tags:       []*metricpb.Tag{},
 	}
 	testMappingRuleSnapshot4V2Proto = &rulepb.MappingRuleSnapshot{
 		Name:               "bar",
@@ -166,7 +163,6 @@ var (
 			},
 		},
 		DropPolicy: policypb.DropPolicy_NONE,
-		Tags:       []*metricpb.Tag{},
 	}
 	testMappingRuleSnapshot5V2Proto = &rulepb.MappingRuleSnapshot{
 		Name:               "foo",
@@ -177,7 +173,6 @@ var (
 		LastUpdatedBy:      "someone",
 		StoragePolicies:    []*policypb.StoragePolicy{},
 		DropPolicy:         policypb.DropPolicy_DROP_MUST,
-		Tags:               []*metricpb.Tag{},
 	}
 	testMappingRuleSnapshot6V2Proto = &rulepb.MappingRuleSnapshot{
 		Name:               "foo",
@@ -188,7 +183,6 @@ var (
 		LastUpdatedBy:      "someone-else",
 		StoragePolicies:    []*policypb.StoragePolicy{},
 		DropPolicy:         policypb.DropPolicy_DROP_IF_ONLY_MATCH,
-		Tags:               []*metricpb.Tag{},
 	}
 	testMappingRule1V1Proto = &rulepb.MappingRule{
 		Uuid: "12669817-13ae-40e6-ba2f-33087b262c68",
@@ -223,7 +217,6 @@ var (
 		dropPolicy:         policy.DropNone,
 		lastUpdatedAtNanos: 12345000000,
 		lastUpdatedBy:      "someone",
-		tags:               []models.Tag{},
 	}
 	testMappingRuleSnapshot2 = &mappingRuleSnapshot{
 		name:          "bar",
@@ -238,7 +231,6 @@ var (
 		dropPolicy:         policy.DropNone,
 		lastUpdatedAtNanos: 67890000000,
 		lastUpdatedBy:      "someone-else",
-		tags:               []models.Tag{},
 	}
 	testMappingRuleSnapshot3 = &mappingRuleSnapshot{
 		name:          "foo",
@@ -254,7 +246,6 @@ var (
 		dropPolicy:         policy.DropNone,
 		lastUpdatedAtNanos: 12345000000,
 		lastUpdatedBy:      "someone",
-		tags:               []models.Tag{},
 	}
 	testMappingRuleSnapshot4 = &mappingRuleSnapshot{
 		name:          "bar",
@@ -268,7 +259,6 @@ var (
 		dropPolicy:         policy.DropNone,
 		lastUpdatedAtNanos: 67890000000,
 		lastUpdatedBy:      "someone-else",
-		tags:               []models.Tag{},
 	}
 	testMappingRuleSnapshot5 = &mappingRuleSnapshot{
 		name:               "foo",
@@ -280,7 +270,6 @@ var (
 		dropPolicy:         policy.DropMust,
 		lastUpdatedAtNanos: 12345000000,
 		lastUpdatedBy:      "someone",
-		tags:               []models.Tag{},
 	}
 	testMappingRuleSnapshot6 = &mappingRuleSnapshot{
 		name:               "foo",
@@ -292,7 +281,6 @@ var (
 		dropPolicy:         policy.DropIfOnlyMatch,
 		lastUpdatedAtNanos: 67890000000,
 		lastUpdatedBy:      "someone-else",
-		tags:               []models.Tag{},
 	}
 	testMappingRule1 = &mappingRule{
 		uuid: "12669817-13ae-40e6-ba2f-33087b262c68",
@@ -401,7 +389,6 @@ func TestNewMappingRuleSnapshotFromProtoTombstoned(t *testing.T) {
 		Filter:             "tag1:value1 tag2:value2",
 		LastUpdatedAtNanos: 12345000000,
 		LastUpdatedBy:      "someone",
-		Tags:               []*metricpb.Tag{},
 	}
 	res, err := newMappingRuleSnapshotFromProto(input, filterOpts)
 	require.NoError(t, err)
@@ -414,7 +401,6 @@ func TestNewMappingRuleSnapshotFromProtoTombstoned(t *testing.T) {
 		aggregationID:      aggregation.DefaultID,
 		lastUpdatedAtNanos: 12345000000,
 		lastUpdatedBy:      "someone",
-		tags:               []models.Tag{},
 	}
 	require.True(t, cmp.Equal(expected, res, testMappingRuleSnapshotCmpOpts...))
 	require.NotNil(t, res.filter)
@@ -462,7 +448,6 @@ func TestNewMappingRuleSnapshotFromFields(t *testing.T) {
 		testMappingRuleSnapshot3.aggregationID,
 		testMappingRuleSnapshot3.storagePolicies,
 		testMappingRuleSnapshot3.dropPolicy,
-		testMappingRuleSnapshot3.tags,
 		testMappingRuleSnapshot3.lastUpdatedAtNanos,
 		testMappingRuleSnapshot3.lastUpdatedBy,
 	)
@@ -486,7 +471,6 @@ func TestNewMappingRuleSnapshotFromFieldsValidationError(t *testing.T) {
 			aggregation.DefaultID,
 			nil,
 			policy.DropNone,
-			nil,
 			1234,
 			"test_user",
 		)
@@ -636,7 +620,6 @@ func TestMappingRuleMarkTombstoned(t *testing.T) {
 		rawFilter:          "tag1:value1 tag2:value2",
 		lastUpdatedAtNanos: 10000,
 		lastUpdatedBy:      "john",
-		tags:               []models.Tag{},
 	}
 	require.True(t, cmp.Equal(expected, rr.snapshots[1], testMappingRuleSnapshotCmpOpts...))
 }

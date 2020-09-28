@@ -215,7 +215,7 @@ func TestHTTPEndpoint(t *testing.T) {
 	})
 }
 
-func newHandlerOptsAndClient(t *testing.T) (placement.HandlerOptions, *kv.MockStore, *clusterclient.MockClient) {
+func newHandlerOptsAndClient(t *testing.T) (placement.HandlerOptions, *clusterclient.MockClient) {
 	placementProto := &placementpb.Placement{
 		Instances: map[string]*placementpb.Instance{
 			"host1": &placementpb.Instance{
@@ -269,7 +269,7 @@ func newHandlerOptsAndClient(t *testing.T) (placement.HandlerOptions, *kv.MockSt
 		mockClient, config.Configuration{}, nil, instrument.NewOptions())
 	require.NoError(t, err)
 
-	return handlerOpts, mockKV, mockClient
+	return handlerOpts, mockClient
 }
 
 func TestDefaultSources(t *testing.T) {
@@ -282,10 +282,9 @@ func TestDefaultSources(t *testing.T) {
 		"placement-m3db.json",
 	}
 
-	handlerOpts, mockKV, mockClient := newHandlerOptsAndClient(t)
-	mockClient.EXPECT().Store(gomock.Any()).Return(mockKV, nil)
+	handlerOpts, mockClient := newHandlerOptsAndClient(t)
 	svcDefaults := []handleroptions.ServiceNameAndDefaults{{
-		ServiceName: handleroptions.M3DBServiceName,
+		ServiceName: "m3db",
 	}}
 	zw, err := NewPlacementAndNamespaceZipWriterWithDefaultSources(1*time.Second, mockClient, handlerOpts, svcDefaults, instrument.NewOptions())
 	require.NoError(t, err)

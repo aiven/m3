@@ -235,8 +235,6 @@ func (as *activeRuleSet) mappingsForNonRollupID(
 			AggregationID:   snapshot.aggregationID,
 			StoragePolicies: snapshot.storagePolicies.Clone(),
 			DropPolicy:      snapshot.dropPolicy,
-			Tags:            snapshot.tags,
-			GraphitePrefix:  snapshot.graphitePrefix,
 		}
 		pipelines = append(pipelines, pipeline)
 	}

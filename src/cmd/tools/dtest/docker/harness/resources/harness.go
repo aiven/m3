@@ -27,9 +27,7 @@ import (
 	"github.com/m3db/m3/src/query/generated/proto/admin"
 	xerrors "github.com/m3db/m3/src/x/errors"
 	"github.com/m3db/m3/src/x/instrument"
-
-	protobuftypes "github.com/gogo/protobuf/types"
-	"github.com/ory/dockertest"
+	dockertest "github.com/ory/dockertest"
 	"go.uber.org/zap"
 )
 
@@ -152,14 +150,13 @@ func SetupSingleM3DBNode() (DockerResources, error) {
 		coldWriteNamespace = admin.NamespaceAddRequest{
 			Name: ColdWriteNsName,
 			Options: &namespace.NamespaceOptions{
-				BootstrapEnabled:      true,
-				FlushEnabled:          true,
-				WritesToCommitLog:     true,
-				CleanupEnabled:        true,
-				SnapshotEnabled:       true,
-				RepairEnabled:         true,
-				ColdWritesEnabled:     true,
-				CacheBlocksOnRetrieve: &protobuftypes.BoolValue{Value: true},
+				BootstrapEnabled:  true,
+				FlushEnabled:      true,
+				WritesToCommitLog: true,
+				CleanupEnabled:    true,
+				SnapshotEnabled:   true,
+				RepairEnabled:     true,
+				ColdWritesEnabled: true,
 				RetentionOptions: &namespace.RetentionOptions{
 					RetentionPeriodNanos:                     int64(4 * time.Hour),
 					BlockSizeNanos:                           int64(time.Hour),

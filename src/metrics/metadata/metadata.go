@@ -26,7 +26,6 @@ import (
 	"github.com/m3db/m3/src/metrics/generated/proto/policypb"
 	"github.com/m3db/m3/src/metrics/pipeline/applied"
 	"github.com/m3db/m3/src/metrics/policy"
-	"github.com/m3db/m3/src/query/models"
 )
 
 var (
@@ -82,12 +81,6 @@ type PipelineMetadata struct {
 
 	// Drop policy.
 	DropPolicy policy.DropPolicy `json:"dropPolicy,omitempty"`
-
-	// Tags.
-	Tags []models.Tag `json:"tags"`
-
-	// GraphitePrefix is the list of graphite prefixes to apply.
-	GraphitePrefix [][]byte `json:"graphitePrefix"`
 }
 
 // Equal returns true if two pipeline metadata are considered equal.

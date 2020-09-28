@@ -297,13 +297,6 @@ func (s *dbSeries) IsEmpty() bool {
 	return false
 }
 
-func (s *dbSeries) IsBufferEmptyAtBlockStart(blockStart time.Time) bool {
-	s.RLock()
-	bufferEmpty := s.buffer.IsEmptyAtBlockStart(blockStart)
-	s.RUnlock()
-	return bufferEmpty
-}
-
 func (s *dbSeries) NumActiveBlocks() int {
 	s.RLock()
 	value := s.cachedBlocks.Len() + s.buffer.Stats().wiredBlocks
@@ -619,14 +612,14 @@ func (s *dbSeries) Snapshot(
 	blockStart time.Time,
 	persistFn persist.DataFn,
 	nsCtx namespace.Context,
-) (SnapshotResult, error) {
+) error {
 	// Need a write lock because the buffer Snapshot method mutates
 	// state (by performing a pro-active merge).
 	s.Lock()
-	result, err := s.buffer.Snapshot(ctx, blockStart,
+	err := s.buffer.Snapshot(ctx, blockStart,
 		persist.NewMetadata(s.metadata), persistFn, nsCtx)
 	s.Unlock()
-	return result, err
+	return err
 }
 
 func (s *dbSeries) ColdFlushBlockStarts(blockStates BootstrappedBlockStateSnapshot) OptimizedTimes {

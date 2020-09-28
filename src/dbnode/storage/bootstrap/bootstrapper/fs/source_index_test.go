@@ -31,6 +31,7 @@ import (
 	"github.com/m3db/m3/src/dbnode/persist/fs"
 	"github.com/m3db/m3/src/dbnode/retention"
 	"github.com/m3db/m3/src/dbnode/storage/bootstrap"
+	"github.com/m3db/m3/src/dbnode/storage/bootstrap/bootstrapper"
 	"github.com/m3db/m3/src/dbnode/storage/bootstrap/result"
 	"github.com/m3db/m3/src/dbnode/storage/index/convert"
 	"github.com/m3db/m3/src/m3ninx/index/segment/mem"
@@ -145,7 +146,7 @@ func writeTSDBPersistedIndexBlock(
 	shards map[uint32]struct{},
 	block []testSeries,
 ) {
-	seg, err := mem.NewSegment(mem.NewOptions())
+	seg, err := mem.NewSegment(0, mem.NewOptions())
 	require.NoError(t, err)
 
 	for _, series := range block {
@@ -265,7 +266,7 @@ func validateGoodTaggedSeries(
 		for _, indexBlock := range indexBlockByVolumeType.Iter() {
 			require.Equal(t, 1, len(indexBlock.Segments()))
 			for _, seg := range indexBlock.Segments() {
-				reader, err := seg.Segment().Reader()
+				reader, err := seg.Reader()
 				require.NoError(t, err)
 
 				docs, err := reader.AllDocs()
@@ -358,7 +359,7 @@ func TestBootstrapIndex(t *testing.T) {
 	block, ok := blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment := block.Segments()[0]
+	segment, ok := block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.True(t, segment.IsPersisted())
 
@@ -368,7 +369,7 @@ func TestBootstrapIndex(t *testing.T) {
 	block, ok = blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment = block.Segments()[0]
+	segment, ok = block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.False(t, segment.IsPersisted())
 
@@ -428,7 +429,7 @@ func TestBootstrapIndexIgnoresPersistConfigIfSnapshotType(t *testing.T) {
 	block, ok := blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment := block.Segments()[0]
+	segment, ok := block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.False(t, segment.IsPersisted())
 
@@ -437,7 +438,7 @@ func TestBootstrapIndexIgnoresPersistConfigIfSnapshotType(t *testing.T) {
 	block, ok = blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment = block.Segments()[0]
+	segment, ok = block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.False(t, segment.IsPersisted())
 
@@ -497,7 +498,7 @@ func TestBootstrapIndexWithPersistPrefersPersistedIndexBlocks(t *testing.T) {
 	block, ok := blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment := block.Segments()[0]
+	segment, ok := block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.True(t, segment.IsPersisted())
 
@@ -507,7 +508,7 @@ func TestBootstrapIndexWithPersistPrefersPersistedIndexBlocks(t *testing.T) {
 	block, ok = blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment = block.Segments()[0]
+	segment, ok = block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.False(t, segment.IsPersisted())
 
@@ -630,7 +631,7 @@ func TestBootstrapIndexWithPersistForIndexBlockAtRetentionEdge(t *testing.T) {
 	block, ok := blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment := block.Segments()[0]
+	segment, ok := block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.True(t, segment.IsPersisted())
 
@@ -640,7 +641,7 @@ func TestBootstrapIndexWithPersistForIndexBlockAtRetentionEdge(t *testing.T) {
 	block, ok = blockByVolumeType.GetBlock(idxpersist.DefaultIndexVolumeType)
 	require.True(t, ok)
 	require.Equal(t, 1, len(block.Segments()))
-	segment = block.Segments()[0]
+	segment, ok = block.Segments()[0].(*bootstrapper.Segment)
 	require.True(t, ok)
 	require.True(t, segment.IsPersisted())
 

@@ -32,7 +32,7 @@ import (
 )
 
 func TestPlacementSource(t *testing.T) {
-	handlerOpts, _, _ := newHandlerOptsAndClient(t)
+	handlerOpts, _ := newHandlerOptsAndClient(t)
 	iOpts := instrument.NewOptions()
 	svcDefaults := handleroptions.ServiceNameAndDefaults{
 		ServiceName: "m3db",

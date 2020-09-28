@@ -29,7 +29,6 @@ import (
 	"github.com/m3db/m3/src/cluster/kv/mem"
 	merrors "github.com/m3db/m3/src/metrics/errors"
 	"github.com/m3db/m3/src/metrics/generated/proto/aggregationpb"
-	"github.com/m3db/m3/src/metrics/generated/proto/metricpb"
 	"github.com/m3db/m3/src/metrics/generated/proto/pipelinepb"
 	"github.com/m3db/m3/src/metrics/generated/proto/policypb"
 	"github.com/m3db/m3/src/metrics/generated/proto/rulepb"
@@ -105,12 +104,6 @@ var (
 								},
 							},
 						},
-						Tags: []*metricpb.Tag{
-							{
-								Name:  []byte("name"),
-								Value: []byte("name"),
-							},
-						},
 					},
 					&rulepb.MappingRuleSnapshot{
 						Name:         "foo",
@@ -137,12 +130,6 @@ var (
 								},
 							},
 						},
-						Tags: []*metricpb.Tag{
-							{
-								Name:  []byte("name"),
-								Value: []byte("name"),
-							},
-						},
 					},
 				},
 			},
@@ -166,12 +153,6 @@ var (
 								Retention: &policypb.Retention{
 									Period: int64(24 * time.Hour),
 								},
-							},
-						},
-						Tags: []*metricpb.Tag{
-							{
-								Name:  []byte("name"),
-								Value: []byte("name"),
 							},
 						},
 					},

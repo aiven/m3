@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	xtime "github.com/m3db/m3/src/x/time"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,17 +34,16 @@ func TestDatabaseIsBootstrappedAndDurable(t *testing.T) {
 
 	var (
 		validIsBootstrapped                  = true
-		validShardSetAssignedAt              = xtime.ToUnixNano(time.Now())
-		validLastBootstrapCompletionTime     = xtime.ToUnixNano(validShardSetAssignedAt.ToTime().Add(time.Second))
-		validLastSuccessfulSnapshotStartTime = xtime.ToUnixNano(validLastBootstrapCompletionTime.ToTime().Add(time.Second))
-		zeroTime                             xtime.UnixNano
+		validShardSetAssignedAt              = time.Now()
+		validLastBootstrapCompletionTime     = validShardSetAssignedAt.Add(time.Second)
+		validLastSuccessfulSnapshotStartTime = validLastBootstrapCompletionTime.Add(time.Second)
 	)
 	testCases := []struct {
 		title                           string
 		isBootstrapped                  bool
-		lastBootstrapCompletionTime     xtime.UnixNano
-		lastSuccessfulSnapshotStartTime xtime.UnixNano
-		shardSetAssignedAt              xtime.UnixNano
+		lastBootstrapCompletionTime     time.Time
+		lastSuccessfulSnapshotStartTime time.Time
+		shardSetAssignedAt              time.Time
 		expectedResult                  bool
 	}{
 		{
@@ -59,7 +57,7 @@ func TestDatabaseIsBootstrappedAndDurable(t *testing.T) {
 		{
 			title:                           "False if no last bootstrap completion time",
 			isBootstrapped:                  validIsBootstrapped,
-			lastBootstrapCompletionTime:     zeroTime,
+			lastBootstrapCompletionTime:     time.Time{},
 			lastSuccessfulSnapshotStartTime: validLastSuccessfulSnapshotStartTime,
 			shardSetAssignedAt:              validShardSetAssignedAt,
 			expectedResult:                  false,
@@ -68,7 +66,7 @@ func TestDatabaseIsBootstrappedAndDurable(t *testing.T) {
 			title:                           "False if no last successful snapshot start time",
 			isBootstrapped:                  validIsBootstrapped,
 			lastBootstrapCompletionTime:     validLastBootstrapCompletionTime,
-			lastSuccessfulSnapshotStartTime: zeroTime,
+			lastSuccessfulSnapshotStartTime: time.Time{},
 			shardSetAssignedAt:              validShardSetAssignedAt,
 			expectedResult:                  false,
 		},
@@ -93,7 +91,7 @@ func TestDatabaseIsBootstrappedAndDurable(t *testing.T) {
 			isBootstrapped:                  validIsBootstrapped,
 			lastBootstrapCompletionTime:     validLastBootstrapCompletionTime,
 			lastSuccessfulSnapshotStartTime: validLastSuccessfulSnapshotStartTime,
-			shardSetAssignedAt:              validLastBootstrapCompletionTime + xtime.UnixNano(xtime.Second),
+			shardSetAssignedAt:              validLastBootstrapCompletionTime.Add(time.Second),
 			expectedResult:                  false,
 		},
 		{
@@ -115,7 +113,7 @@ func TestDatabaseIsBootstrappedAndDurable(t *testing.T) {
 
 			mediator := NewMockdatabaseMediator(ctrl)
 			d.mediator = mediator
-			d.lastReceivedNewShards = tc.shardSetAssignedAt.ToTime()
+			d.lastReceivedNewShards = tc.shardSetAssignedAt
 
 			mediator.EXPECT().IsBootstrapped().Return(tc.isBootstrapped)
 			if !tc.isBootstrapped {
@@ -124,8 +122,8 @@ func TestDatabaseIsBootstrappedAndDurable(t *testing.T) {
 				return
 			}
 
-			if tc.lastBootstrapCompletionTime == 0 {
-				mediator.EXPECT().LastBootstrapCompletionTime().Return(zeroTime, false)
+			if tc.lastBootstrapCompletionTime.IsZero() {
+				mediator.EXPECT().LastBootstrapCompletionTime().Return(time.Time{}, false)
 				assert.Equal(t, tc.expectedResult, d.IsBootstrappedAndDurable())
 				// Early return because other mock calls will not get called.
 				return
@@ -133,8 +131,8 @@ func TestDatabaseIsBootstrappedAndDurable(t *testing.T) {
 
 			mediator.EXPECT().LastBootstrapCompletionTime().Return(tc.lastBootstrapCompletionTime, true)
 
-			if tc.lastSuccessfulSnapshotStartTime == 0 {
-				mediator.EXPECT().LastSuccessfulSnapshotStartTime().Return(zeroTime, false)
+			if tc.lastSuccessfulSnapshotStartTime.IsZero() {
+				mediator.EXPECT().LastSuccessfulSnapshotStartTime().Return(time.Time{}, false)
 				assert.Equal(t, tc.expectedResult, d.IsBootstrappedAndDurable())
 				// Early return because other mock calls will not get called.
 				return

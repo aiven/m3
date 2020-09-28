@@ -32,7 +32,6 @@ import (
 	"github.com/m3db/m3/src/dbnode/encoding/m3tsz"
 	"github.com/m3db/m3/src/dbnode/persist"
 	"github.com/m3db/m3/src/dbnode/retention"
-	m3dbruntime "github.com/m3db/m3/src/dbnode/runtime"
 	"github.com/m3db/m3/src/dbnode/storage/block"
 	"github.com/m3db/m3/src/dbnode/storage/index/convert"
 	"github.com/m3db/m3/src/dbnode/ts"
@@ -68,8 +67,7 @@ func newSeriesTestOptions() Options {
 		SetEncoderPool(encoderPool).
 		SetMultiReaderIteratorPool(multiReaderIteratorPool).
 		SetBufferBucketPool(bufferBucketPool).
-		SetBufferBucketVersionsPool(bufferBucketVersionsPool).
-		SetRuntimeOptionsManager(m3dbruntime.NewOptionsManager())
+		SetBufferBucketVersionsPool(bufferBucketVersionsPool)
 	opts = opts.
 		SetRetentionOptions(opts.
 			RetentionOptions().

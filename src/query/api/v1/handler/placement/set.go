@@ -60,9 +60,7 @@ var (
 		M3CoordinatorServicePlacementPathName, setPathName)
 )
 
-// SetHandler is the type for manually setting a placement value. If none
-// currently exists, this will set the initial placement. Otherwise it will
-// override the existing placement.
+// SetHandler is the type for placement replaces.
 type SetHandler Handler
 
 // NewSetHandler returns a new SetHandler.
@@ -95,19 +93,22 @@ func (h *SetHandler) ServeHTTP(
 		return
 	}
 
-	var isNewPlacement bool
 	curPlacement, err := service.Placement()
+	if err == kv.ErrNotFound {
+		logger.Error("placement not found", zap.Any("req", req), zap.Error(err))
+		xhttp.Error(w, err, http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if err != kv.ErrNotFound {
-			logger.Error("unable to get current placement", zap.Error(err))
-			xhttp.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-
-		isNewPlacement = true
-		logger.Info("no placement found, creating new placement")
+		logger.Error("unable to get current placement", zap.Error(err))
+		xhttp.Error(w, err, http.StatusInternalServerError)
+		return
 	}
 
+	var (
+		placementProto   = req.Placement
+		placementVersion int
+	)
 	newPlacement, err := placement.NewPlacementFromProto(req.Placement)
 	if err != nil {
 		logger.Error("unable to create new placement from proto", zap.Error(err))
@@ -115,35 +116,18 @@ func (h *SetHandler) ServeHTTP(
 		return
 	}
 
-	var (
-		placementProto = req.Placement
-		dryRun         = !req.Confirm
-
-		updatedPlacement placement.Placement
-		placementVersion int
-	)
-
+	dryRun := !req.Confirm
 	if dryRun {
 		logger.Info("performing dry run for set placement, not confirmed")
-		if isNewPlacement {
-			placementVersion = 0
-		} else {
-			placementVersion = curPlacement.Version() + 1
-		}
+		placementVersion = curPlacement.Version() + 1
 	} else {
 		logger.Info("performing live run for set placement, confirmed")
-
-		if isNewPlacement {
-			updatedPlacement, err = service.SetIfNotExist(newPlacement)
-		} else {
-			// Ensure the placement we're updating is still the one on which we validated
-			// all shards are available.
-			updatedPlacement, err = service.CheckAndSet(newPlacement,
-				curPlacement.Version())
-		}
-
+		// Ensure the placement we're updating is still the one on which we validated
+		// all shards are available.
+		updatedPlacement, err := service.CheckAndSet(newPlacement,
+			curPlacement.Version())
 		if err != nil {
-			logger.Error("unable to update placement", zap.Error(err), zap.Bool("isNewPlacement", isNewPlacement))
+			logger.Error("unable to update placement", zap.Error(err))
 			xhttp.Error(w, err, http.StatusInternalServerError)
 			return
 		}

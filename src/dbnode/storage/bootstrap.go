@@ -31,7 +31,6 @@ import (
 	"github.com/m3db/m3/src/x/context"
 	xerrors "github.com/m3db/m3/src/x/errors"
 	"github.com/m3db/m3/src/x/instrument"
-	xtime "github.com/m3db/m3/src/x/time"
 
 	"github.com/uber-go/tally"
 	"go.uber.org/zap"
@@ -62,9 +61,6 @@ var (
 
 	// errBootstrapEnqueued raised when trying to bootstrap and bootstrap becomes enqueued.
 	errBootstrapEnqueued = errors.New("database bootstrapping enqueued bootstrap")
-
-	// errColdWritesDisabled raised when trying to do large tiles aggregation with cold writes disabled.
-	errColdWritesDisabled = errors.New("cold writes are disabled")
 )
 
 const (
@@ -89,7 +85,7 @@ type bootstrapManager struct {
 	status                      tally.Gauge
 	bootstrapDuration           tally.Timer
 	durableStatus               tally.Gauge
-	lastBootstrapCompletionTime xtime.UnixNano
+	lastBootstrapCompletionTime time.Time
 }
 
 func newBootstrapManager(
@@ -121,11 +117,8 @@ func (m *bootstrapManager) IsBootstrapped() bool {
 	return state == Bootstrapped
 }
 
-func (m *bootstrapManager) LastBootstrapCompletionTime() (xtime.UnixNano, bool) {
-	m.RLock()
-	bsTime := m.lastBootstrapCompletionTime
-	m.RUnlock()
-	return bsTime, bsTime > 0
+func (m *bootstrapManager) LastBootstrapCompletionTime() (time.Time, bool) {
+	return m.lastBootstrapCompletionTime, !m.lastBootstrapCompletionTime.IsZero()
 }
 
 func (m *bootstrapManager) Bootstrap() (BootstrapResult, error) {
@@ -148,7 +141,7 @@ func (m *bootstrapManager) Bootstrap() (BootstrapResult, error) {
 
 	// NB(xichen): disable filesystem manager before we bootstrap to minimize
 	// the impact of file operations on bootstrapping performance
-	m.mediator.DisableFileOpsAndWait()
+	m.mediator.DisableFileOps()
 	defer m.mediator.EnableFileOps()
 
 	// Keep performing bootstraps until none pending and no error returned.
@@ -198,9 +191,8 @@ func (m *bootstrapManager) Bootstrap() (BootstrapResult, error) {
 	// load to the cluster. It turns out to be better to let ticking happen naturally
 	// on its own course so that the load of ticking and flushing is more spread out
 	// across the cluster.
-	m.Lock()
-	m.lastBootstrapCompletionTime = xtime.ToUnixNano(m.nowFn())
-	m.Unlock()
+
+	m.lastBootstrapCompletionTime = m.nowFn()
 	return result, nil
 }
 

@@ -31,7 +31,7 @@ import (
 	"github.com/m3db/m3/src/dbnode/clock"
 	"github.com/m3db/m3/src/dbnode/storage/bootstrap/result"
 	"github.com/m3db/m3/src/dbnode/storage/index/compaction"
-	"github.com/m3db/m3/src/dbnode/storage/limits"
+	"github.com/m3db/m3/src/dbnode/storage/stats"
 	"github.com/m3db/m3/src/m3ninx/doc"
 	"github.com/m3db/m3/src/m3ninx/index/segment"
 	"github.com/m3db/m3/src/m3ninx/index/segment/builder"
@@ -1057,17 +1057,17 @@ func (mr *MockfieldsAndTermsIteratorMockRecorder) Close() *gomock.Call {
 }
 
 // Reset mocks base method
-func (m *MockfieldsAndTermsIterator) Reset(reader segment.Reader, opts fieldsAndTermsIteratorOpts) error {
+func (m *MockfieldsAndTermsIterator) Reset(seg segment.Segment, opts fieldsAndTermsIteratorOpts) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Reset", reader, opts)
+	ret := m.ctrl.Call(m, "Reset", seg, opts)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Reset indicates an expected call of Reset
-func (mr *MockfieldsAndTermsIteratorMockRecorder) Reset(reader, opts interface{}) *gomock.Call {
+func (mr *MockfieldsAndTermsIteratorMockRecorder) Reset(seg, opts interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reset", reflect.TypeOf((*MockfieldsAndTermsIterator)(nil).Reset), reader, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reset", reflect.TypeOf((*MockfieldsAndTermsIterator)(nil).Reset), seg, opts)
 }
 
 // MockOptions is a mock of Options interface
@@ -1667,30 +1667,30 @@ func (mr *MockOptionsMockRecorder) MmapReporter() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MmapReporter", reflect.TypeOf((*MockOptions)(nil).MmapReporter))
 }
 
-// SetQueryLimits mocks base method
-func (m *MockOptions) SetQueryLimits(value limits.QueryLimits) Options {
+// SetQueryStats mocks base method
+func (m *MockOptions) SetQueryStats(value stats.QueryStats) Options {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetQueryLimits", value)
+	ret := m.ctrl.Call(m, "SetQueryStats", value)
 	ret0, _ := ret[0].(Options)
 	return ret0
 }
 
-// SetQueryLimits indicates an expected call of SetQueryLimits
-func (mr *MockOptionsMockRecorder) SetQueryLimits(value interface{}) *gomock.Call {
+// SetQueryStats indicates an expected call of SetQueryStats
+func (mr *MockOptionsMockRecorder) SetQueryStats(value interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetQueryLimits", reflect.TypeOf((*MockOptions)(nil).SetQueryLimits), value)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetQueryStats", reflect.TypeOf((*MockOptions)(nil).SetQueryStats), value)
 }
 
-// QueryLimits mocks base method
-func (m *MockOptions) QueryLimits() limits.QueryLimits {
+// QueryStats mocks base method
+func (m *MockOptions) QueryStats() stats.QueryStats {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "QueryLimits")
-	ret0, _ := ret[0].(limits.QueryLimits)
+	ret := m.ctrl.Call(m, "QueryStats")
+	ret0, _ := ret[0].(stats.QueryStats)
 	return ret0
 }
 
-// QueryLimits indicates an expected call of QueryLimits
-func (mr *MockOptionsMockRecorder) QueryLimits() *gomock.Call {
+// QueryStats indicates an expected call of QueryStats
+func (mr *MockOptionsMockRecorder) QueryStats() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryLimits", reflect.TypeOf((*MockOptions)(nil).QueryLimits))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryStats", reflect.TypeOf((*MockOptions)(nil).QueryStats))
 }

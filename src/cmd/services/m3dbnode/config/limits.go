@@ -27,12 +27,7 @@ type LimitsConfiguration struct {
 	// MaxRecentlyQueriedSeriesBlocks sets the upper limit on time series blocks
 	// count within a given lookback period. Queries which are issued while this
 	// max is surpassed encounter an error.
-	MaxRecentlyQueriedSeriesBlocks *MaxRecentQueryResourceLimitConfiguration `yaml:"maxRecentlyQueriedSeriesBlocks"`
-
-	// MaxRecentlyQueriedSeriesDiskBytesRead sets the upper limit on time series bytes
-	// read from disk within a given lookback period. Queries which are issued while this
-	// max is surpassed encounter an error.
-	MaxRecentlyQueriedSeriesDiskBytesRead *MaxRecentQueryResourceLimitConfiguration `yaml:"maxRecentlyQueriedSeriesDiskBytesRead"`
+	MaxRecentlyQueriedSeriesBlocks *MaxRecentlyQueriedSeriesBlocksConfiguration `yaml:"maxRecentlyQueriedSeriesBlocks"`
 
 	// MaxOutstandingWriteRequests controls the maximum number of outstanding write requests
 	// that the server will allow before it begins rejecting requests. Note that this value
@@ -52,20 +47,16 @@ type LimitsConfiguration struct {
 	// process would pause until some of the repaired bytes had been persisted to disk (and subsequently
 	// evicted from memory) at which point it would resume.
 	MaxOutstandingRepairedBytes int64 `yaml:"maxOutstandingRepairedBytes" validate:"min=0"`
-
-	// MaxEncodersPerBlock is the maximum number of encoders permitted in a block.
-	// When there are too many encoders, merging them (during a tick) puts a high
-	// load on the CPU, which can prevent other DB operations.
-	// A setting of 0 means there is no maximum.
-	MaxEncodersPerBlock int `yaml:"maxEncodersPerBlock" validate:"min=0"`
 }
 
-// MaxRecentQueryResourceLimitConfiguration sets an upper limit on resources consumed by all queries
-// globally within a dbnode per some lookback period of time. Once exceeded, queries within that period
-// of time will be abandoned.
-type MaxRecentQueryResourceLimitConfiguration struct {
-	// Value sets the max value for the resource limit.
+// MaxRecentlyQueriedSeriesBlocksConfiguration sets the upper limit on time
+// series blocks count within a given lookback period. Queries which are issued
+// while this max is surpassed encounter an error.
+type MaxRecentlyQueriedSeriesBlocksConfiguration struct {
+	// Value sets the max recently queried time series blocks for the given
+	// time window.
 	Value int64 `yaml:"value" validate:"min=0"`
-	// Lookback is the period in which a given resource limit is enforced.
+	// Lookback is the period to time window the max value of time series
+	// blocks allowed to be queried.
 	Lookback time.Duration `yaml:"lookback" validate:"min=0"`
 }

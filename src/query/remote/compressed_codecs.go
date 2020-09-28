@@ -138,24 +138,23 @@ func buildTags(tagIter ident.TagIterator, iterPools encoding.IteratorPools) ([]b
 	return nil, errors.ErrCannotEncodeCompressedTags
 }
 
-// CompressedSeriesFromSeriesIterator builds compressed rpc series from a SeriesIterator
-// SeriesIterator is the top level iterator returned by m3db
-func CompressedSeriesFromSeriesIterator(
+/*
+Builds compressed rpc series from a SeriesIterator
+SeriesIterator is the top level iterator returned by m3db
+This SeriesIterator contains MultiReaderIterators, each representing a single
+replica. Each MultiReaderIterator has a ReaderSliceOfSlicesIterator where each
+step through the iterator exposes a slice of underlying BlockReaders. Each
+BlockReader contains the run time encoded bytes that represent the series.
+
+SeriesIterator also has a TagIterator representing the tags associated with it.
+
+This function transforms a SeriesIterator into a protobuf representation to be
+able to send it across the wire without needing to expand the series.
+*/
+func compressedSeriesFromSeriesIterator(
 	it encoding.SeriesIterator,
 	iterPools encoding.IteratorPools,
 ) (*rpc.Series, error) {
-	// This SeriesIterator contains MultiReaderIterators, each representing a single
-	// replica. Each MultiReaderIterator has a ReaderSliceOfSlicesIterator where each
-	// step through the iterator exposes a slice of underlying BlockReaders. Each
-	// BlockReader contains the run time encoded bytes that represent the series.
-	//
-	// SeriesIterator also has a TagIterator representing the tags associated with it.
-	//
-	// This function transforms a SeriesIterator into a protobuf representation to be
-	// able to send it across the wire without needing to expand the series.
-	//
-	// If reset argument is true, the SeriesIterator readers will be reset so it can
-	// be iterated again. If false, the SeriesIterator will no longer be useable.
 	replicas, err := it.Replicas()
 	if err != nil {
 		return nil, err
@@ -170,29 +169,19 @@ func CompressedSeriesFromSeriesIterator(
 			if err != nil {
 				return nil, err
 			}
+
 			replicaSegments = append(replicaSegments, segments)
 		}
 
-		// Rewind the reader state back to beginning to the it can be re-iterated by caller.
-		// These multi-readers are queued up via ResetSliceOfSlices so that the first Current
-		// index is set, and therefore we must also call an initial Next here to match that state.
-		// This behavior is not obvious so we should later change ResetSliceOfSlices to not do this
-		// initial Next move and assert that all iters start w/ Current as nil.
-		readers.Rewind()
-		readers.Next()
-
-		r := &rpc.M3CompressedValuesReplica{
+		compressedReplicas = append(compressedReplicas, &rpc.M3CompressedValuesReplica{
 			Segments: replicaSegments,
-		}
-		compressedReplicas = append(compressedReplicas, r)
+		})
 	}
 
 	start := xtime.ToNanoseconds(it.Start())
 	end := xtime.ToNanoseconds(it.End())
 
-	itTags := it.Tags()
-	defer itTags.Rewind()
-	tags, err := buildTags(itTags, iterPools)
+	tags, err := buildTags(it.Tags(), iterPools)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +209,7 @@ func encodeToCompressedSeries(
 	iters := results.SeriesIterators()
 	seriesList := make([]*rpc.Series, 0, len(iters))
 	for _, iter := range iters {
-		series, err := CompressedSeriesFromSeriesIterator(iter, iterPools)
+		series, err := compressedSeriesFromSeriesIterator(iter, iterPools)
 		if err != nil {
 			return nil, err
 		}
@@ -408,9 +397,9 @@ func seriesIteratorFromCompressedSeries(
 	return seriesIter, nil
 }
 
-// DecodeCompressedFetchResponse decodes compressed fetch
+// decodeCompressedFetchResponse decodes compressed fetch
 // response to seriesIterators.
-func DecodeCompressedFetchResponse(
+func decodeCompressedFetchResponse(
 	fetchResult *rpc.FetchResponse,
 	iteratorPools encoding.IteratorPools,
 ) (encoding.SeriesIterators, error) {

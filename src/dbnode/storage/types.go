@@ -219,9 +219,6 @@ type Database interface {
 
 	// FlushState returns the flush state for the specified shard and block start.
 	FlushState(namespace ident.ID, shardID uint32, blockStart time.Time) (fileOpState, error)
-
-	// AggregateTiles does large tile aggregation from source namespace to target namespace.
-	AggregateTiles(ctx context.Context, sourceNsID, targetNsID ident.ID, opts AggregateTilesOptions) (int64, error)
 }
 
 // database is the internal database interface.
@@ -408,16 +405,6 @@ type databaseNamespace interface {
 
 	// WritePendingIndexInserts will write any pending index inserts.
 	WritePendingIndexInserts(pending []writes.PendingIndexInsert) error
-
-	// AggregateTiles does large tile aggregation from source namespace into this namespace.
-	AggregateTiles(
-		ctx context.Context,
-		sourceNs databaseNamespace,
-		opts AggregateTilesOptions,
-		pm persist.Manager,
-	) (int64, error)
-
-	readableShardAt(shardID uint32) (databaseShard, namespace.Context, error)
 }
 
 // SeriesReadWriteRef is a read/write reference for a series,
@@ -561,7 +548,7 @@ type databaseShard interface {
 		snapshotStart time.Time,
 		flush persist.SnapshotPreparer,
 		nsCtx namespace.Context,
-	) (ShardSnapshotResult, error)
+	) error
 
 	// FlushState returns the flush state for this shard at block start.
 	FlushState(blockStart time.Time) (fileOpState, error)
@@ -594,24 +581,6 @@ type databaseShard interface {
 
 	// DocRef returns the doc if already present in a shard series.
 	DocRef(id ident.ID) (doc.Document, bool, error)
-
-	// AggregateTiles does large tile aggregation from source shards into this shard.
-	AggregateTiles(
-		ctx context.Context,
-		reader fs.DataFileSetReader,
-		sourceNsID ident.ID,
-		sourceBlockStart time.Time,
-		sourceShard databaseShard,
-		opts AggregateTilesOptions,
-		wOpts series.WriteOptions,
-	) (int64, error)
-
-	latestVolume(blockStart time.Time) (int, error)
-}
-
-// ShardSnapshotResult is a result from a shard snapshot.
-type ShardSnapshotResult struct {
-	SeriesPersist int
 }
 
 // ShardColdFlush exposes a done method to finalize shard cold flush
@@ -715,14 +684,11 @@ type DebugMemorySegmentsOptions struct {
 // namespaceIndexTickResult are details about the work performed by the namespaceIndex
 // during a Tick().
 type namespaceIndexTickResult struct {
-	NumBlocks               int64
-	NumBlocksSealed         int64
-	NumBlocksEvicted        int64
-	NumSegments             int64
-	NumSegmentsBootstrapped int64
-	NumSegmentsMutable      int64
-	NumTotalDocs            int64
-	FreeMmap                int64
+	NumBlocks        int64
+	NumBlocksSealed  int64
+	NumBlocksEvicted int64
+	NumSegments      int64
+	NumTotalDocs     int64
 }
 
 // namespaceIndexInsertQueue is a queue used in-front of the indexing component
@@ -758,7 +724,7 @@ type databaseBootstrapManager interface {
 
 	// LastBootstrapCompletionTime returns the last bootstrap completion time,
 	// if any.
-	LastBootstrapCompletionTime() (xtime.UnixNano, bool)
+	LastBootstrapCompletionTime() (time.Time, bool)
 
 	// Bootstrap performs bootstrapping for all namespaces and shards owned.
 	Bootstrap() (BootstrapResult, error)
@@ -780,21 +746,16 @@ type databaseFlushManager interface {
 
 	// LastSuccessfulSnapshotStartTime returns the start time of the last
 	// successful snapshot, if any.
-	LastSuccessfulSnapshotStartTime() (xtime.UnixNano, bool)
+	LastSuccessfulSnapshotStartTime() (time.Time, bool)
 
 	// Report reports runtime information.
 	Report()
 }
 
 // databaseCleanupManager manages cleaning up persistent storage space.
-// NB(bodu): We have to separate flush methods since we separated out flushing into warm/cold flush
-// and cleaning up certain types of data concurrently w/ either can be problematic.
 type databaseCleanupManager interface {
-	// WarmFlushCleanup cleans up data not needed in the persistent storage before a warm flush.
-	WarmFlushCleanup(t time.Time, isBootstrapped bool) error
-
-	// ColdFlushCleanup cleans up data not needed in the persistent storage before a cold flush.
-	ColdFlushCleanup(t time.Time, isBootstrapped bool) error
+	// Cleanup cleans up data not needed in the persistent storage.
+	Cleanup(t time.Time, isBootstrapped bool) error
 
 	// Report reports runtime information.
 	Report()
@@ -802,6 +763,9 @@ type databaseCleanupManager interface {
 
 // databaseFileSystemManager manages the database related filesystem activities.
 type databaseFileSystemManager interface {
+	// Cleanup cleans up data not needed in the persistent storage.
+	Cleanup(t time.Time, isBootstrapped bool) error
+
 	// Flush flushes in-memory data to persistent storage.
 	Flush(t time.Time) error
 
@@ -828,26 +792,7 @@ type databaseFileSystemManager interface {
 
 	// LastSuccessfulSnapshotStartTime returns the start time of the last
 	// successful snapshot, if any.
-	LastSuccessfulSnapshotStartTime() (xtime.UnixNano, bool)
-}
-
-// databaseColdFlushManager manages the database related cold flush activities.
-type databaseColdFlushManager interface {
-	databaseCleanupManager
-
-	// Disable disables the cold flush manager and prevents it from
-	// performing file operations, returns the current file operation status.
-	Disable() fileOpStatus
-
-	// Enable enables the cold flush manager to perform file operations.
-	Enable() fileOpStatus
-
-	// Status returns the file operation status.
-	Status() fileOpStatus
-
-	// Run attempts to perform all cold flush related operations,
-	// returning true if those operations are performed, and false otherwise.
-	Run(t time.Time) bool
+	LastSuccessfulSnapshotStartTime() (time.Time, bool)
 }
 
 // databaseShardRepairer repairs in-memory data for a shard.
@@ -898,19 +843,22 @@ type databaseMediator interface {
 
 	// LastBootstrapCompletionTime returns the last bootstrap completion time,
 	// if any.
-	LastBootstrapCompletionTime() (xtime.UnixNano, bool)
+	LastBootstrapCompletionTime() (time.Time, bool)
 
 	// Bootstrap bootstraps the database with file operations performed at the end.
 	Bootstrap() (BootstrapResult, error)
 
-	// DisableFileOpsAndWait disables file operations.
-	DisableFileOpsAndWait()
+	// DisableFileOps disables file operations.
+	DisableFileOps()
 
 	// EnableFileOps enables file operations.
 	EnableFileOps()
 
 	// Tick performs a tick.
 	Tick(forceType forceType, startTime time.Time) error
+
+	// WaitForFileSystemProcesses waits for any ongoing fs processes to finish.
+	WaitForFileSystemProcesses()
 
 	// Repair repairs the database.
 	Repair() error
@@ -923,7 +871,7 @@ type databaseMediator interface {
 
 	// LastSuccessfulSnapshotStartTime returns the start time of the last
 	// successful snapshot, if any.
-	LastSuccessfulSnapshotStartTime() (xtime.UnixNano, bool)
+	LastSuccessfulSnapshotStartTime() (time.Time, bool)
 }
 
 // OnColdFlush can perform work each time a series is flushed.
@@ -1205,12 +1153,6 @@ type Options interface {
 
 	// NamespaceRuntimeOptionsManagerRegistry returns the namespace runtime options manager.
 	NamespaceRuntimeOptionsManagerRegistry() namespace.RuntimeOptionsManagerRegistry
-
-	// SetMediatorTickInterval sets the ticking interval for the medidator.
-	SetMediatorTickInterval(value time.Duration) Options
-
-	// MediatorTickInterval returns the ticking interval for the mediator.
-	MediatorTickInterval() time.Duration
 }
 
 // MemoryTracker tracks memory.
@@ -1269,14 +1211,3 @@ type newFSMergeWithMemFn func(
 	dirtySeries *dirtySeriesMap,
 	dirtySeriesToWrite map[xtime.UnixNano]*idList,
 ) fs.MergeWith
-
-// AggregateTilesOptions is the options for large tile aggregation.
-type AggregateTilesOptions struct {
-	// Start and End specify the aggregation window.
-	Start, End          time.Time
-	// Step is the downsampling step.
-	Step                time.Duration
-	// HandleCounterResets is temporarily used to force counter reset handling logics on the processed series.
-	// TODO: remove once we have metrics type stored in the metadata.
-	HandleCounterResets bool
-}

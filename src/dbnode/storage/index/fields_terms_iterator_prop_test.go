@@ -51,11 +51,8 @@ func TestFieldsTermsIteratorPropertyTest(t *testing.T) {
 	properties.Property("Fields Terms Iteration works", prop.ForAll(
 		func(i fieldsTermsIteratorPropInput) (bool, error) {
 			expected := i.expected()
-			reader, err := i.setup.asSegment(t).Reader()
-			if err != nil {
-				return false, err
-			}
-			iter, err := newFieldsAndTermsIterator(reader, fieldsAndTermsIteratorOpts{
+			seg := i.setup.asSegment(t)
+			iter, err := newFieldsAndTermsIterator(seg, fieldsAndTermsIteratorOpts{
 				iterateTerms: i.iterateTerms,
 				allowFn:      i.allowFn,
 			})
@@ -90,8 +87,8 @@ func TestFieldsTermsIteratorPropertyTestNoPanic(t *testing.T) {
 	// on the happy path; this prop tests ensures we don't panic unless the underlying iterator
 	// itself panics.
 	properties.Property("Fields Terms Iteration doesn't blow up", prop.ForAll(
-		func(reader segment.Reader, iterate bool) (bool, error) {
-			iter, err := newFieldsAndTermsIterator(reader, fieldsAndTermsIteratorOpts{
+		func(seg segment.Segment, iterate bool) (bool, error) {
+			iter, err := newFieldsAndTermsIterator(seg, fieldsAndTermsIteratorOpts{
 				iterateTerms: iterate,
 			})
 			if err != nil {
@@ -138,7 +135,7 @@ func (i fieldsTermsIteratorPropInput) expected() []pair {
 
 func genIterableSegment(ctrl *gomock.Controller) gopter.Gen {
 	return gen.MapOf(genIterpoint(), gen.SliceOf(genIterpoint())).
-		Map(func(tagValues map[iterpoint][]iterpoint) segment.Reader {
+		Map(func(tagValues map[iterpoint][]iterpoint) segment.Segment {
 			fields := make([]iterpoint, 0, len(tagValues))
 			for f := range tagValues {
 				fields = append(fields, f)
@@ -147,20 +144,23 @@ func genIterableSegment(ctrl *gomock.Controller) gopter.Gen {
 				return strings.Compare(fields[i].value, fields[j].value) < 0
 			})
 
-			r := segment.NewMockReader(ctrl)
-
+			s := segment.NewMockSegment(ctrl)
+			fieldIterable := segment.NewMockFieldsIterable(ctrl)
 			fieldIterator := &stubFieldIterator{points: fields}
+			termsIterable := segment.NewMockTermsIterable(ctrl)
 
-			r.EXPECT().Fields().Return(fieldIterator, nil).AnyTimes()
+			s.EXPECT().FieldsIterable().Return(fieldIterable).AnyTimes()
+			s.EXPECT().TermsIterable().Return(termsIterable).AnyTimes()
+			fieldIterable.EXPECT().Fields().Return(fieldIterator, nil).AnyTimes()
 
 			for f, values := range tagValues {
 				sort.Slice(values, func(i, j int) bool {
 					return strings.Compare(values[i].value, values[j].value) < 0
 				})
 				termIterator := &stubTermIterator{points: values}
-				r.EXPECT().Terms([]byte(f.value)).Return(termIterator, nil).AnyTimes()
+				termsIterable.EXPECT().Terms([]byte(f.value)).Return(termIterator, nil).AnyTimes()
 			}
-			return r
+			return s
 		})
 }
 

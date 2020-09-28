@@ -24,7 +24,6 @@ import (
 	"testing"
 	"time"
 
-	m3dbruntime "github.com/m3db/m3/src/dbnode/runtime"
 	"github.com/m3db/m3/src/dbnode/testdata/prototest"
 	"github.com/m3db/m3/src/x/ident"
 
@@ -50,8 +49,7 @@ func newBufferTestProtoOptions(t *testing.T) Options {
 		SetEncoderPool(prototest.ProtoPools.EncoderPool).
 		SetMultiReaderIteratorPool(prototest.ProtoPools.MultiReaderIterPool).
 		SetBufferBucketPool(bufferBucketPool).
-		SetBufferBucketVersionsPool(bufferBucketVersionsPool).
-		SetRuntimeOptionsManager(m3dbruntime.NewOptionsManager())
+		SetBufferBucketVersionsPool(bufferBucketVersionsPool)
 	opts = opts.
 		SetRetentionOptions(opts.RetentionOptions().
 			SetBlockSize(2 * time.Minute).

@@ -85,7 +85,7 @@ func TestBuilderFields(t *testing.T) {
 	}()
 
 	for i := 0; i < 10; i++ {
-		builder.Reset()
+		builder.Reset(0)
 
 		knownsFields := map[string]struct{}{}
 		for _, d := range testDocuments {
@@ -115,7 +115,7 @@ func TestBuilderTerms(t *testing.T) {
 	}()
 
 	for i := 0; i < 10; i++ {
-		builder.Reset()
+		builder.Reset(0)
 
 		knownsFields := map[string]map[string]struct{}{}
 		for _, d := range testDocuments {

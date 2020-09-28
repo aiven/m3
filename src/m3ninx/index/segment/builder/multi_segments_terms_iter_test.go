@@ -80,7 +80,7 @@ func TestTermsIterFromSegmentsDeduplicates(t *testing.T) {
 	}
 
 	builder := NewBuilderFromSegments(testOptions)
-	builder.Reset()
+	builder.Reset(0)
 	require.NoError(t, builder.AddSegments(segments))
 	iter, err := builder.Terms([]byte("fruit"))
 	require.NoError(t, err)

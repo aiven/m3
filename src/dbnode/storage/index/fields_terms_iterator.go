@@ -49,20 +49,20 @@ func (o fieldsAndTermsIteratorOpts) allow(f []byte) bool {
 	return o.allowFn(f)
 }
 
-func (o fieldsAndTermsIteratorOpts) newFieldIter(r segment.Reader) (segment.FieldsIterator, error) {
+func (o fieldsAndTermsIteratorOpts) newFieldIter(s segment.Segment) (segment.FieldsIterator, error) {
 	if o.fieldIterFn == nil {
-		return r.Fields()
+		return s.FieldsIterable().Fields()
 	}
-	return o.fieldIterFn(r)
+	return o.fieldIterFn(s)
 }
 
 type allowFn func(field []byte) bool
 
-type newFieldIterFn func(r segment.Reader) (segment.FieldsIterator, error)
+type newFieldIterFn func(s segment.Segment) (segment.FieldsIterator, error)
 
 type fieldsAndTermsIter struct {
-	reader segment.Reader
-	opts   fieldsAndTermsIteratorOpts
+	seg  segment.Segment
+	opts fieldsAndTermsIteratorOpts
 
 	err       error
 	fieldIter segment.FieldsIterator
@@ -85,27 +85,27 @@ var _ fieldsAndTermsIterator = &fieldsAndTermsIter{}
 
 // newFieldsAndTermsIteratorFn is the lambda definition of the ctor for fieldsAndTermsIterator.
 type newFieldsAndTermsIteratorFn func(
-	r segment.Reader, opts fieldsAndTermsIteratorOpts,
+	s segment.Segment, opts fieldsAndTermsIteratorOpts,
 ) (fieldsAndTermsIterator, error)
 
-func newFieldsAndTermsIterator(reader segment.Reader, opts fieldsAndTermsIteratorOpts) (fieldsAndTermsIterator, error) {
+func newFieldsAndTermsIterator(s segment.Segment, opts fieldsAndTermsIteratorOpts) (fieldsAndTermsIterator, error) {
 	iter := &fieldsAndTermsIter{}
-	err := iter.Reset(reader, opts)
+	err := iter.Reset(s, opts)
 	if err != nil {
 		return nil, err
 	}
 	return iter, nil
 }
 
-func (fti *fieldsAndTermsIter) Reset(reader segment.Reader, opts fieldsAndTermsIteratorOpts) error {
+func (fti *fieldsAndTermsIter) Reset(s segment.Segment, opts fieldsAndTermsIteratorOpts) error {
 	*fti = fieldsAndTermsIterZeroed
-	fti.reader = reader
+	fti.seg = s
 	fti.opts = opts
-	if reader == nil {
+	if s == nil {
 		return nil
 	}
 
-	fiter, err := fti.opts.newFieldIter(reader)
+	fiter, err := fti.opts.newFieldIter(s)
 	if err != nil {
 		return err
 	}
@@ -117,12 +117,26 @@ func (fti *fieldsAndTermsIter) Reset(reader segment.Reader, opts fieldsAndTermsI
 	}
 
 	// If need to restrict by query, run the query on the segment first.
+	var (
+		readerTryClose bool
+	)
+	reader, err := fti.seg.Reader()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if !readerTryClose {
+			reader.Close()
+		}
+	}()
+
 	searcher, err := opts.restrictByQuery.SearchQuery().Searcher()
 	if err != nil {
 		return err
 	}
 
-	pl, err := searcher.Search(fti.reader)
+	pl, err := searcher.Search(reader)
 	if err != nil {
 		return err
 	}
@@ -131,6 +145,11 @@ func (fti *fieldsAndTermsIter) Reset(reader segment.Reader, opts fieldsAndTermsI
 	bitmap, ok := roaring.BitmapFromPostingsList(pl)
 	if !ok {
 		return errUnpackBitmapFromPostingsList
+	}
+
+	readerTryClose = true
+	if err := reader.Close(); err != nil {
+		return err
 	}
 
 	fti.restrictByPostings = bitmap
@@ -174,7 +193,7 @@ func (fti *fieldsAndTermsIter) setNext() bool {
 	for hasNextField := fti.setNextField(); hasNextField; hasNextField = fti.setNextField() {
 		// and get next term for the field
 		var err error
-		fti.termIter, err = fti.reader.Terms(fti.current.field)
+		fti.termIter, err = fti.seg.TermsIterable().Terms(fti.current.field)
 		if err != nil {
 			fti.err = err
 			return false

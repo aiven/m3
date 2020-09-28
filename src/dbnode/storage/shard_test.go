@@ -23,7 +23,6 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -191,8 +190,8 @@ func TestShardBootstrapWithFlushVersion(t *testing.T) {
 		fsOpts = opts.CommitLogOptions().FilesystemOptions().
 			SetFilePathPrefix(dir)
 		newClOpts = opts.
-			CommitLogOptions().
-			SetFilesystemOptions(fsOpts)
+				CommitLogOptions().
+				SetFilesystemOptions(fsOpts)
 	)
 	opts = opts.
 		SetCommitLogOptions(newClOpts)
@@ -269,8 +268,8 @@ func TestShardBootstrapWithFlushVersionNoCleanUp(t *testing.T) {
 		fsOpts = opts.CommitLogOptions().FilesystemOptions().
 			SetFilePathPrefix(dir)
 		newClOpts = opts.
-			CommitLogOptions().
-			SetFilesystemOptions(fsOpts)
+				CommitLogOptions().
+				SetFilesystemOptions(fsOpts)
 	)
 	opts = opts.
 		SetCommitLogOptions(newClOpts)
@@ -327,8 +326,8 @@ func TestShardBootstrapWithCacheShardIndices(t *testing.T) {
 		fsOpts = opts.CommitLogOptions().FilesystemOptions().
 			SetFilePathPrefix(dir)
 		newClOpts = opts.
-			CommitLogOptions().
-			SetFilesystemOptions(fsOpts)
+				CommitLogOptions().
+				SetFilesystemOptions(fsOpts)
 		mockRetriever = block.NewMockDatabaseBlockRetriever(ctrl)
 	)
 	opts = opts.SetCommitLogOptions(newClOpts)
@@ -726,15 +725,14 @@ func TestShardColdFlushNoMergeIfNothingDirty(t *testing.T) {
 }
 
 func newMergerTestFn(
-	_ fs.DataFileSetReader,
-	_ int,
-	_ xio.SegmentReaderPool,
-	_ encoding.MultiReaderIteratorPool,
-	_ ident.Pool,
-	_ encoding.EncoderPool,
-	_ context.Pool,
-	_ string,
-	_ namespace.Options,
+	reader fs.DataFileSetReader,
+	blockAllocSize int,
+	srPool xio.SegmentReaderPool,
+	multiIterPool encoding.MultiReaderIteratorPool,
+	identPool ident.Pool,
+	encoderPool encoding.EncoderPool,
+	contextPool context.Pool,
+	nsOpts namespace.Options,
 ) fs.Merger {
 	return &noopMerger{}
 }
@@ -742,36 +740,44 @@ func newMergerTestFn(
 type noopMerger struct{}
 
 func (m *noopMerger) Merge(
-	_ fs.FileSetFileIdentifier,
-	_ fs.MergeWith,
-	_ int,
-	_ persist.FlushPreparer,
-	_ namespace.Context,
-	_ persist.OnFlushSeries,
+	fileID fs.FileSetFileIdentifier,
+	mergeWith fs.MergeWith,
+	nextVersion int,
+	flushPreparer persist.FlushPreparer,
+	nsCtx namespace.Context,
+	onFlush persist.OnFlushSeries,
 ) (persist.DataCloser, error) {
 	closer := func() error { return nil }
 	return closer, nil
 }
 
-func (m *noopMerger) MergeAndCleanup(
-	_ fs.FileSetFileIdentifier,
-	_ fs.MergeWith,
-	_ int,
-	_ persist.FlushPreparer,
-	_ namespace.Context,
-	_ persist.OnFlushSeries,
-	_ bool,
-) error {
-	return nil
+func newFSMergeWithMemTestFn(
+	shard databaseShard,
+	retriever series.QueryableBlockRetriever,
+	dirtySeries *dirtySeriesMap,
+	dirtySeriesToWrite map[xtime.UnixNano]*idList,
+) fs.MergeWith {
+	return &noopMergeWith{}
 }
 
-func newFSMergeWithMemTestFn(
-	_ databaseShard,
-	_ series.QueryableBlockRetriever,
-	_ *dirtySeriesMap,
-	_ map[xtime.UnixNano]*idList,
-) fs.MergeWith {
-	return fs.NewNoopMergeWith()
+type noopMergeWith struct{}
+
+func (m *noopMergeWith) Read(
+	ctx context.Context,
+	seriesID ident.ID,
+	blockStart xtime.UnixNano,
+	nsCtx namespace.Context,
+) ([]xio.BlockReader, bool, error) {
+	return nil, false, nil
+}
+
+func (m *noopMergeWith) ForEachRemaining(
+	ctx context.Context,
+	blockStart xtime.UnixNano,
+	fn fs.ForEachRemainingFn,
+	nsCtx namespace.Context,
+) error {
+	return nil
 }
 
 func TestShardSnapshotShardNotBootstrapped(t *testing.T) {
@@ -785,7 +791,7 @@ func TestShardSnapshotShardNotBootstrapped(t *testing.T) {
 	s.bootstrapState = Bootstrapping
 
 	snapshotPreparer := persist.NewMockSnapshotPreparer(ctrl)
-	_, err := s.Snapshot(blockStart, blockStart, snapshotPreparer, namespace.Context{})
+	err := s.Snapshot(blockStart, blockStart, snapshotPreparer, namespace.Context{})
 	require.Equal(t, errShardNotBootstrappedToSnapshot, err)
 }
 
@@ -820,20 +826,20 @@ func TestShardSnapshotSeriesSnapshotSuccess(t *testing.T) {
 	snapshotted := make(map[int]struct{})
 	for i := 0; i < 2; i++ {
 		i := i
-		entry := series.NewMockDatabaseSeries(ctrl)
-		entry.EXPECT().ID().Return(ident.StringID("foo" + strconv.Itoa(i))).AnyTimes()
-		entry.EXPECT().IsEmpty().Return(false).AnyTimes()
-		entry.EXPECT().IsBufferEmptyAtBlockStart(blockStart).Return(false).AnyTimes()
-		entry.EXPECT().
+		series := series.NewMockDatabaseSeries(ctrl)
+		series.EXPECT().ID().Return(ident.StringID("foo" + strconv.Itoa(i))).AnyTimes()
+		series.EXPECT().IsEmpty().Return(false).AnyTimes()
+		series.EXPECT().
 			Snapshot(gomock.Any(), blockStart, gomock.Any(), gomock.Any()).
 			Do(func(context.Context, time.Time, persist.DataFn, namespace.Context) {
 				snapshotted[i] = struct{}{}
 			}).
-			Return(series.SnapshotResult{}, nil)
-		s.list.PushBack(lookup.NewEntry(entry, 0))
+			Return(nil)
+		s.list.PushBack(lookup.NewEntry(series, 0))
 	}
 
-	_, err := s.Snapshot(blockStart, blockStart, snapshotPreparer, namespace.Context{})
+	err := s.Snapshot(blockStart, blockStart, snapshotPreparer, namespace.Context{})
+
 	require.Equal(t, len(snapshotted), 2)
 	for i := 0; i < 2; i++ {
 		_, ok := snapshotted[i]
@@ -1758,46 +1764,4 @@ func TestShardIterateBatchSize(t *testing.T) {
 	require.Equal(t, shardIterateBatchMinSize, iterateBatchSize(shardIterateBatchMinSize+1))
 
 	require.True(t, shardIterateBatchMinSize < iterateBatchSize(2000))
-}
-
-func TestShardAggregateTiles(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	var (
-		ctx   = context.NewContext()
-		start = time.Now().Truncate(time.Hour)
-		opts  = AggregateTilesOptions{Start: start, End: start.Add(time.Hour)}
-		bytes = checked.NewBytes([]byte{}, checked.NewBytesOptions())
-	)
-
-	sourceShard := testDatabaseShard(t, DefaultTestOptions())
-	defer sourceShard.Close()
-
-	targetShard := testDatabaseShard(t, DefaultTestOptions())
-	defer targetShard.Close()
-
-	latestSourceVolume, err := sourceShard.latestVolume(opts.Start)
-	require.NoError(t, err)
-
-	sourceNsID := sourceShard.namespace.ID()
-	readerOpenOpts := fs.DataReaderOpenOptions{
-		Identifier: fs.FileSetFileIdentifier{
-			Namespace:   sourceNsID,
-			Shard:       sourceShard.ID(),
-			BlockStart:  opts.Start,
-			VolumeIndex: latestSourceVolume,
-		},
-		FileSetType: persist.FileSetFlushType,
-	}
-
-	reader := fs.NewMockDataFileSetReader(ctrl)
-	reader.EXPECT().Open(readerOpenOpts).Return(nil)
-	reader.EXPECT().Read().Return(ident.StringID("id1"), ident.EmptyTagIterator, bytes, uint32(11), nil)
-	reader.EXPECT().Read().Return(nil, nil, nil, uint32(0), io.EOF)
-	reader.EXPECT().Close()
-
-	processedBlockCount, err := targetShard.AggregateTiles(ctx, reader, sourceNsID, start, sourceShard, opts, series.WriteOptions{})
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), processedBlockCount)
 }

@@ -23,7 +23,6 @@ package service
 import (
 	"fmt"
 	"math/rand"
-	"sync/atomic"
 	"testing"
 
 	"github.com/m3db/m3/src/cluster/kv"
@@ -270,26 +269,14 @@ func shardIDs(ss shard.Shards) []uint32 {
 	return ids
 }
 
-func newTestInstance() placement.Instance {
-	return newInstanceWithID(nextTestInstanceID())
-}
-
 func newInstanceWithID(id string) placement.Instance {
 	return placement.NewEmptyInstance(
 		id,
-		nextTestIsolationGroup(),
+		nextIsolationGroup(),
 		zone,
 		fmt.Sprintf("localhost:%d", randPort()),
 		defaultWeight,
 	)
-}
-
-var curInstanceNo int64
-
-// Uses global state; factor into a factory object if you need guarantees about the specific results.
-func nextTestInstanceID() string {
-	myNumber := atomic.AddInt64(&curInstanceNo, 1)
-	return fmt.Sprintf("instance-%d", myNumber)
 }
 
 // completely random valid port, not necessarily open.
@@ -297,10 +284,11 @@ func randPort() int {
 	return rand.Intn(1 << 16)
 }
 
-var curISOGroup int64
+var curISOGroup = 0
 
-// Uses global state; factor into a factory object if you need guarantees about the specific results.
-func nextTestIsolationGroup() string {
-	myGroup := atomic.AddInt64(&curISOGroup, 1)
+// Not thread safe; factor into a factory object if you need that.
+func nextIsolationGroup() string {
+	myGroup := curISOGroup
+	curISOGroup++
 	return fmt.Sprintf("iso-group-%d", myGroup)
 }

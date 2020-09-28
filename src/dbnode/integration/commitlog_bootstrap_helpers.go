@@ -106,8 +106,8 @@ func writeCommitLogData(
 	data generate.SeriesBlocksByStart,
 	namespace namespace.Metadata,
 	genSnapshots bool,
-) int {
-	return writeCommitLogDataBase(t, s, opts, data, namespace, nil, nil)
+) {
+	writeCommitLogDataBase(t, s, opts, data, namespace, nil, nil)
 }
 
 func writeCommitLogDataSpecifiedTS(
@@ -118,8 +118,8 @@ func writeCommitLogDataSpecifiedTS(
 	namespace namespace.Metadata,
 	ts time.Time,
 	genSnapshots bool,
-) int {
-	return writeCommitLogDataBase(t, s, opts, data, namespace, &ts, nil)
+) {
+	writeCommitLogDataBase(t, s, opts, data, namespace, &ts, nil)
 }
 
 func writeCommitLogDataWithPredicate(
@@ -129,11 +129,10 @@ func writeCommitLogDataWithPredicate(
 	data generate.SeriesBlocksByStart,
 	namespace namespace.Metadata,
 	pred generate.WriteDatapointPredicate,
-) int {
-	return writeCommitLogDataBase(t, s, opts, data, namespace, nil, pred)
+) {
+	writeCommitLogDataBase(t, s, opts, data, namespace, nil, pred)
 }
 
-// returns the number of data points written to the commit log
 func writeCommitLogDataBase(
 	t *testing.T,
 	s TestSetup,
@@ -142,7 +141,7 @@ func writeCommitLogDataBase(
 	namespace namespace.Metadata,
 	specifiedTS *time.Time,
 	pred generate.WriteDatapointPredicate,
-) int {
+) {
 	if pred == nil {
 		pred = generate.WriteAllPredicate
 	}
@@ -156,7 +155,6 @@ func writeCommitLogDataBase(
 		shardSet       = s.ShardSet()
 		tagEncoderPool = opts.FilesystemOptions().TagEncoderPool()
 		tagSliceIter   = ident.NewTagsIterator(ident.Tags{})
-		writes int
 	)
 
 	// Write out commit log data.
@@ -205,14 +203,12 @@ func writeCommitLogDataBase(
 			}
 			if pred(point.Value) {
 				require.NoError(t, commitLog.Write(ctx, cID, point.Value.Datapoint, xtime.Second, point.Value.Annotation))
-				writes++
 			}
 		}
 
 		// ensure writes finished.
 		require.NoError(t, commitLog.Close())
 	}
-	return writes
 }
 
 func writeSnapshotsWithPredicate(

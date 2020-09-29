@@ -283,6 +283,7 @@ func NewInfluxWriterHandler(options options.HandlerOptions) http.Handler {
 }
 
 func (iwh *ingestWriteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		xhttp.Error(w, err, http.StatusInternalServerError)

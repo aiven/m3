@@ -50,10 +50,12 @@ type objectPool struct {
 	refillHighWatermark int
 	filling             int32
 	initialized         int32
+	inUse               int32
 }
 
 type objectPoolMetrics struct {
 	free       tally.Gauge
+	inUse      tally.Gauge
 	total      tally.Gauge
 	getOnEmpty tally.Counter
 	putOnFull  tally.Counter
@@ -75,6 +77,7 @@ func NewObjectPool(opts ObjectPoolOptions) ObjectPool {
 			opts.RefillHighWatermark() * float64(opts.Size()))),
 		metrics: objectPoolMetrics{
 			free:       m.Gauge("free"),
+			inUse:      m.Gauge("in-use"),
 			total:      m.Gauge("total"),
 			getOnEmpty: m.Counter("get-on-empty"),
 			putOnFull:  m.Counter("put-on-full"),
@@ -119,11 +122,10 @@ func (p *objectPool) Get() interface{} {
 		v = p.alloc()
 		metrics.getOnEmpty.Inc(1)
 	}
+	atomic.AddInt32(&p.inUse, 1)
 
 	if unsafe.Fastrandn(sampleObjectPoolLengthEvery) == 0 {
-		// inlined setGauges()
-		metrics.free.Update(float64(len(p.values)))
-		metrics.total.Update(float64(p.size))
+		p.setGauges()
 	}
 
 	if p.refillLowWatermark > 0 && len(p.values) <= p.refillLowWatermark {
@@ -143,10 +145,12 @@ func (p *objectPool) Put(obj interface{}) {
 	default:
 		p.metrics.putOnFull.Inc(1)
 	}
+	atomic.AddInt32(&p.inUse, -1)
 }
 
 func (p *objectPool) setGauges() {
 	p.metrics.free.Update(float64(len(p.values)))
+	p.metrics.inUse.Update(float64(atomic.LoadInt32(&p.inUse)))
 	p.metrics.total.Update(float64(p.size))
 }
 

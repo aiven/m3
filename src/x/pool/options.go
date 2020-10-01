@@ -45,8 +45,8 @@ type objectPoolOptions struct {
 func getDefaultSize() int {
 	v, ok := os.LookupEnv("AIVEN_POOL_DEFAULT")
 	if ok {
-		aivenDefaultSize, ok := strconv.Atoi(v)
-		if ok {
+		aivenDefaultSize, err := strconv.Atoi(v)
+		if err == nil {
 			return aivenDefaultSize
 		}
 	}

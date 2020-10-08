@@ -20,7 +20,13 @@
 
 package pool
 
-import "github.com/m3db/m3/src/x/instrument"
+import (
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/m3db/m3/src/x/instrument"
+)
 
 const (
 	defaultSize                = 4096
@@ -36,10 +42,20 @@ type objectPoolOptions struct {
 	onPoolAccessErrorFn OnPoolAccessErrorFn
 }
 
+func getDefaultSize() int {
+	if v, ok := os.LookupEnv("AIVEN_POOL_DEFAULT"); ok {
+		aivenDefaultSize, err := strconv.Atoi(v)
+		if err == nil {
+			return aivenDefaultSize
+		}
+	}
+	return defaultSize
+}
+
 // NewObjectPoolOptions creates a new set of object pool options
 func NewObjectPoolOptions() ObjectPoolOptions {
 	return &objectPoolOptions{
-		size:                defaultSize,
+		size:                getDefaultSize(),
 		refillLowWatermark:  defaultRefillLowWatermark,
 		refillHighWatermark: defaultRefillHighWatermark,
 		instrumentOpts:      instrument.NewOptions(),
@@ -49,7 +65,18 @@ func NewObjectPoolOptions() ObjectPoolOptions {
 
 func (o *objectPoolOptions) SetSize(value int) ObjectPoolOptions {
 	opts := *o
-	opts.size = value
+	if vlist, ok := os.LookupEnv("AIVEN_POOL_VALID"); ok {
+		for _, v := range strings.Split(vlist, ",") {
+			acceptableValue, err := strconv.Atoi(v)
+			if err == nil && acceptableValue == value {
+				opts.size = value
+				break
+			}
+
+		}
+	} else {
+		opts.size = value
+	}
 	return &opts
 }
 

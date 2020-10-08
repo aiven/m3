@@ -158,8 +158,13 @@ func (ii *ingestIterator) Next() bool {
 				for _, tag := range ptags {
 					name := make([]byte, len(tag.Key))
 					copy(name, tag.Key)
+					// tag.Value is a sub-slice of
+					// whole http body; copy it
+					// in case ingest is delayed
+					value := make([]byte, len(tag.Value))
+					copy(value, tag.Value)
 					ii.promRewriter.rewriteLabel(name)
-					tags = tags.AddTagWithoutNormalizing(models.Tag{Name: name, Value: tag.Value})
+					tags = tags.AddTagWithoutNormalizing(models.Tag{Name: name, Value: value})
 				}
 				// sanity check no duplicate Name's;
 				// after Normalize, they are sorted so

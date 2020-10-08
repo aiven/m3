@@ -35,7 +35,7 @@ type ObjectPoolConfiguration struct {
 func (c *ObjectPoolConfiguration) NewObjectPoolOptions(
 	instrumentOpts instrument.Options,
 ) ObjectPoolOptions {
-	size := defaultSize
+	size := getDefaultSize()
 	if c.Size != 0 {
 		size = c.Size
 	}

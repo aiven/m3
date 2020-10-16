@@ -92,6 +92,9 @@ const (
 	// defaultWriteShardsInitializing is the default write to shards intializing value
 	defaultWriteShardsInitializing = true
 
+	// defaultShardsLeavingCountTowardsConsistency is the default shards leaving count towards consistency
+	defaultShardsLeavingCountTowardsConsistency = false
+
 	// defaultIdentifierPoolSize is the default identifier pool size
 	defaultIdentifierPoolSize = 8192
 
@@ -253,6 +256,7 @@ type options struct {
 	fetchRetrier                            xretry.Retrier
 	streamBlocksRetrier                     xretry.Retrier
 	writeShardsInitializing                 bool
+	shardsLeavingCountTowardsConsistency    bool
 	newConnectionFn                         NewConnectionFn
 	readerIteratorAllocate                  encoding.ReaderIteratorAllocate
 	writeOperationPoolSize                  int
@@ -373,6 +377,7 @@ func newOptions() *options {
 		writeRetrier:                            defaultWriteRetrier,
 		fetchRetrier:                            defaultFetchRetrier,
 		writeShardsInitializing:                 defaultWriteShardsInitializing,
+		shardsLeavingCountTowardsConsistency:    defaultShardsLeavingCountTowardsConsistency,
 		tagEncoderPoolSize:                      defaultTagEncoderPoolSize,
 		tagEncoderOpts:                          serialize.NewTagEncoderOptions(),
 		tagDecoderPoolSize:                      defaultTagDecoderPoolSize,
@@ -720,6 +725,16 @@ func (o *options) SetWriteShardsInitializing(value bool) Options {
 
 func (o *options) WriteShardsInitializing() bool {
 	return o.writeShardsInitializing
+}
+
+func (o *options) SetShardsLeavingCountTowardsConsistency(value bool) Options {
+	opts := *o
+	opts.shardsLeavingCountTowardsConsistency = value
+	return &opts
+}
+
+func (o *options) ShardsLeavingCountTowardsConsistency() bool {
+	return o.shardsLeavingCountTowardsConsistency
 }
 
 func (o *options) SetTagEncoderOptions(value serialize.TagEncoderOptions) Options {

@@ -157,6 +157,8 @@ func parseParams(
 	// https://github.com/grafana/grafana/issues/6557
 	query = strings.ReplaceAll(query, "$__interval", shortDur(params.Step))
 	query = strings.ReplaceAll(query, "$__range", shortDur(params.LookbackDuration))
+	// Grafana 7.2 adds $__rate_interval which is still not expanded in alerting. According to documentation it is <= 4x step
+	query = strings.ReplaceAll(query, "$__rate_interval", shortDur(time.Duration(4)*params.Step))
 
 	params.Query = query
 	params.Debug = parseDebugFlag(r, instrumentOpts)

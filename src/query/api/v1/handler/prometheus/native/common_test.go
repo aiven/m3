@@ -22,6 +22,7 @@ package native
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -84,6 +85,41 @@ func TestParamParsing(t *testing.T) {
 	r, err := testParseParams(req)
 	require.Nil(t, err, "unable to parse request")
 	require.Equal(t, promQuery, r.Query)
+}
+
+func TestParamParsingGrafana(t *testing.T) {
+	t.Run("$__interval", func(t *testing.T) {
+		req := httptest.NewRequest("GET", PromReadURL, nil)
+		params := defaultParams()
+		params.Set(queryParam, fmt.Sprintf("rate(%s)[$__interval]", promQuery))
+		req.URL.RawQuery = params.Encode()
+
+		r, err := testParseParams(req)
+		require.Nil(t, err, "unable to parse request")
+		require.Equal(t, fmt.Sprintf("rate(%s)[10s]", promQuery), r.Query)
+	})
+
+	t.Run("$__rate_interval", func(t *testing.T) {
+		req := httptest.NewRequest("GET", PromReadURL, nil)
+		params := defaultParams()
+		params.Set(queryParam, fmt.Sprintf("rate(%s)[$__rate_interval]", promQuery))
+		req.URL.RawQuery = params.Encode()
+
+		r, err := testParseParams(req)
+		require.Nil(t, err, "unable to parse request")
+		require.Equal(t, fmt.Sprintf("rate(%s)[40s]", promQuery), r.Query)
+	})
+
+	t.Run("$__range", func(t *testing.T) {
+		req := httptest.NewRequest("GET", PromReadURL, nil)
+		params := defaultParams()
+		params.Set(queryParam, fmt.Sprintf("%s[$__range]", promQuery))
+		req.URL.RawQuery = params.Encode()
+
+		r, err := testParseParams(req)
+		require.Nil(t, err, "unable to parse request")
+		require.Equal(t, fmt.Sprintf("%s[0s]", promQuery), r.Query)
+	})
 }
 
 func TestParamParsing_POST(t *testing.T) {

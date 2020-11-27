@@ -41,7 +41,8 @@ func NewDefaultChannelOptions() *tchannel.ChannelOptions {
 		MaxIdleTime:       defaultMaxIdleTime,
 		IdleCheckInterval: defaultIdleCheckInterval,
 		DefaultConnectionOptions: tchannel.ConnectionOptions{
-			SendBufferSize: defaultSendBufferSize,
+			SendBufferSize:    defaultSendBufferSize,
+			CompressionMethod: tchannel.NoCompression,
 		},
 	}
 }

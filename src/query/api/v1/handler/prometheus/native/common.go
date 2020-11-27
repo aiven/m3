@@ -26,6 +26,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/m3db/m3/src/query/api/v1/handler/prometheus/handleroptions"
@@ -62,6 +63,17 @@ func parseTime(r *http.Request, key string, now time.Time) (time.Time, error) {
 		return util.ParseTimeString(t)
 	}
 	return time.Time{}, errors.ErrNotFound
+}
+
+func shortDur(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = s[:len(s)-2]
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = s[:len(s)-2]
+	}
+	return s
 }
 
 // parseParams parses all params from the GET request
@@ -126,6 +138,19 @@ func parseParams(
 		return params, xerrors.NewInvalidParamsError(
 			fmt.Errorf(formatErrStr, queryParam, err))
 	}
+
+	params.LookbackDuration = engineOpts.LookbackDuration()
+	if v := fetchOpts.LookbackDuration; v != nil {
+		params.LookbackDuration = *v
+	}
+
+	// Grafana lack of alert rule template variable expansion handling here (sigh)
+	// https://github.com/grafana/grafana/issues/6557
+	query = strings.ReplaceAll(query, "$__interval", shortDur(params.Step))
+	query = strings.ReplaceAll(query, "$__range", shortDur(params.LookbackDuration))
+	// Grafana 7.2 adds $__rate_interval which is still not expanded in alerting. According to documentation it is <= 4x step
+	query = strings.ReplaceAll(query, "$__rate_interval", shortDur(time.Duration(4)*params.Step))
+
 	params.Query = query
 
 	if debugVal := r.FormValue(debugParam); debugVal != "" {
@@ -166,11 +191,6 @@ func parseParams(
 		}
 
 		params.IncludeEnd = !excludeEnd
-	}
-
-	params.LookbackDuration = engineOpts.LookbackDuration()
-	if v := fetchOpts.LookbackDuration; v != nil {
-		params.LookbackDuration = *v
 	}
 
 	return params, nil

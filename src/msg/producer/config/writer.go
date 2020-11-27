@@ -21,8 +21,10 @@
 package config
 
 import (
+	"io"
 	"time"
 
+	snappy "github.com/golang/snappy"
 	"github.com/m3db/m3/src/cluster/client"
 	"github.com/m3db/m3/src/cluster/kv"
 	"github.com/m3db/m3/src/cluster/placement"
@@ -34,7 +36,7 @@ import (
 	xio "github.com/m3db/m3/src/x/io"
 	"github.com/m3db/m3/src/x/pool"
 	"github.com/m3db/m3/src/x/retry"
-
+	yio "github.com/m3db/m3/src/x/yio"
 	"github.com/uber-go/tally"
 )
 
@@ -184,8 +186,14 @@ func (c *WriterConfiguration) NewOptions(
 	switch opts.ConnectionOptions().Compression() {
 	case xio.SnappyCompression:
 		rwOptions = rwOptions.
-			SetResettableReaderFn(xio.SnappyResettableReaderFn()).
-			SetResettableWriterFn(xio.SnappyResettableWriterFn())
+			SetResettableReaderFn(
+				func(r io.Reader, opts xio.ResettableReaderOptions) xio.ResettableReader {
+					return yio.NewTrySnappyReader(r, nil)
+				}).
+			SetResettableWriterFn(
+				func(w io.Writer, opts xio.ResettableWriterOptions) xio.ResettableWriter {
+					return snappy.NewBufferedWriter(w)
+				})
 	}
 
 	opts = opts.

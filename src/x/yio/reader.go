@@ -51,7 +51,8 @@ func newSnappyReaderMetrics(scope tally.Scope) snappyReaderMetrics {
 	}
 }
 
-func newTrySnappyReader(
+// NewTrySnappyReader is a reader that supports Snappy compression
+func NewTrySnappyReader(
 	reader io.Reader,
 	iOpts instrument.Options,
 ) xio.ResettableReader {

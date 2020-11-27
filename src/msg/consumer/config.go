@@ -21,12 +21,15 @@
 package consumer
 
 import (
+	"io"
 	"time"
 
+	snappy "github.com/golang/snappy"
 	"github.com/m3db/m3/src/msg/protocol/proto"
 	"github.com/m3db/m3/src/x/instrument"
 	xio "github.com/m3db/m3/src/x/io"
 	"github.com/m3db/m3/src/x/pool"
+	yio "github.com/m3db/m3/src/x/yio"
 )
 
 // Configuration configs the consumer options.
@@ -104,8 +107,14 @@ func (c *Configuration) NewOptions(iOpts instrument.Options, rwOpts xio.Options)
 	switch opts.Compression() {
 	case xio.SnappyCompression:
 		rwOpts = rwOpts.
-			SetResettableReaderFn(xio.SnappyResettableReaderFn()).
-			SetResettableWriterFn(xio.SnappyResettableWriterFn())
+			SetResettableReaderFn(
+				func(r io.Reader, opts xio.ResettableReaderOptions) xio.ResettableReader {
+					return yio.NewTrySnappyReader(r, nil)
+				}).
+			SetResettableWriterFn(
+				func(w io.Writer, opts xio.ResettableWriterOptions) xio.ResettableWriter {
+					return snappy.NewBufferedWriter(w)
+				})
 	}
 
 	opts = opts.

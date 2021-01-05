@@ -287,7 +287,8 @@ func (iwh *ingestWriteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		xhttp.WriteError(w, err)
 		return
 	}
-	points, err := imodels.ParsePoints(bytes)
+	tsPrecision := r.FormValue("precision")
+	points, err := imodels.ParsePointsWithPrecision(bytes, time.Now().UTC(), tsPrecision)
 	if err != nil {
 		xhttp.WriteError(w, err)
 		return

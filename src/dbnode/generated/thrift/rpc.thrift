@@ -32,9 +32,15 @@ enum ErrorType {
 	BAD_REQUEST
 }
 
+enum ErrorFlags {
+    NONE               = 0x00,
+    RESOURCE_EXHAUSTED = 0x01
+}
+
 exception Error {
 	1: required ErrorType type = ErrorType.INTERNAL_ERROR
 	2: required string message
+	3: optional i64 flags = 0
 }
 
 exception WriteBatchRawErrors {
@@ -172,7 +178,7 @@ struct FetchTaggedRequest {
 	3: required i64 rangeStart
 	4: required i64 rangeEnd
 	5: required bool fetchData
-	6: optional i64 limit
+	6: optional i64 seriesLimit
 	7: optional TimeType rangeTimeType = TimeType.UNIX_SECONDS
 	8: optional bool requireExhaustive = true
 	9: optional i64 docsLimit
@@ -392,11 +398,12 @@ struct AggregateQueryRawRequest {
 	2: required i64 rangeStart
 	3: required i64 rangeEnd
 	4: required binary nameSpace
-	5: optional i64 limit
+	5: optional i64 seriesLimit
 	6: optional list<binary> tagNameFilter
 	7: optional AggregateQueryType aggregateQueryType = AggregateQueryType.AGGREGATE_BY_TAG_NAME_VALUE
 	8: optional TimeType rangeType = TimeType.UNIX_SECONDS
 	9: optional binary source
+	10: optional i64 docsLimit
 }
 
 struct AggregateQueryRawResult {
@@ -419,11 +426,12 @@ struct AggregateQueryRequest {
 	2: required i64 rangeStart
 	3: required i64 rangeEnd
 	4: required string nameSpace
-	5: optional i64 limit
+	5: optional i64 seriesLimit
 	6: optional list<string> tagNameFilter
 	7: optional AggregateQueryType aggregateQueryType = AggregateQueryType.AGGREGATE_BY_TAG_NAME_VALUE
 	8: optional TimeType rangeType = TimeType.UNIX_SECONDS
 	9: optional binary source
+	10: optional i64 docsLimit
 }
 
 struct AggregateQueryResult {

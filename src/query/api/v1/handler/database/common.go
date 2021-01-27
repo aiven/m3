@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+// Package database contains API endpoints for managing the database.
 package database
 
 import (
@@ -25,6 +26,7 @@ import (
 	dbconfig "github.com/m3db/m3/src/cmd/services/m3dbnode/config"
 	"github.com/m3db/m3/src/cmd/services/m3query/config"
 	"github.com/m3db/m3/src/query/api/v1/handler/prometheus/handleroptions"
+	"github.com/m3db/m3/src/query/api/v1/options"
 	"github.com/m3db/m3/src/query/util/queryhttp"
 	"github.com/m3db/m3/src/x/instrument"
 )
@@ -45,12 +47,15 @@ func RegisterRoutes(
 	embeddedDbCfg *dbconfig.DBConfiguration,
 	defaults []handleroptions.ServiceOptionsDefault,
 	instrumentOpts instrument.Options,
+	namespaceValidator options.NamespaceValidator,
 ) error {
 	createHandler, err := NewCreateHandler(client, cfg, embeddedDbCfg,
-		defaults, instrumentOpts)
+		defaults, instrumentOpts, namespaceValidator)
 	if err != nil {
 		return err
 	}
+
+	kvStoreHandler := NewKeyValueStoreHandler(client, instrumentOpts)
 
 	// Register the same handler under two different endpoints. This just makes explaining things in
 	// our documentation easier so we can separate out concepts, but share the underlying code.
@@ -65,6 +70,13 @@ func RegisterRoutes(
 		Path:    CreateNamespaceURL,
 		Handler: createHandler,
 		Methods: []string{CreateNamespaceHTTPMethod},
+	}); err != nil {
+		return err
+	}
+	if err := r.Register(queryhttp.RegisterOptions{
+		Path:    KeyValueStoreURL,
+		Handler: kvStoreHandler,
+		Methods: []string{KeyValueStoreHTTPMethod},
 	}); err != nil {
 		return err
 	}

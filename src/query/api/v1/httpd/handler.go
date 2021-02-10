@@ -51,7 +51,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/util/httputil"
 	"go.uber.org/zap"
 )
@@ -286,6 +286,15 @@ func (h *Handler) RegisterRoutes() error {
 		return err
 	}
 
+	// Readiness endpoint.
+	if err := h.registry.Register(queryhttp.RegisterOptions{
+		Path:    handler.ReadyURL,
+		Handler: handler.NewReadyHandler(h.options),
+		Methods: methods(handler.ReadyHTTPMethod),
+	}); err != nil {
+		return err
+	}
+
 	// Tag completion endpoints.
 	if err := h.registry.Register(queryhttp.RegisterOptions{
 		Path:    native.CompleteTagsURL,
@@ -395,7 +404,7 @@ func (h *Handler) RegisterRoutes() error {
 	if clusterClient != nil {
 		err = database.RegisterRoutes(h.registry, clusterClient,
 			h.options.Config(), h.options.EmbeddedDbCfg(),
-			serviceOptionDefaults, instrumentOpts)
+			serviceOptionDefaults, instrumentOpts, h.options.NamespaceValidator())
 		if err != nil {
 			return err
 		}
@@ -407,7 +416,8 @@ func (h *Handler) RegisterRoutes() error {
 		}
 
 		err = namespace.RegisterRoutes(h.registry, clusterClient,
-			h.options.Clusters(), serviceOptionDefaults, instrumentOpts)
+			h.options.Clusters(), serviceOptionDefaults, instrumentOpts,
+			h.options.NamespaceValidator())
 		if err != nil {
 			return err
 		}

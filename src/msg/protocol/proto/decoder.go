@@ -59,6 +59,7 @@ func NewDecoder(r io.Reader, opts Options, bufferSize int) Decoder {
 func (d *decoder) Decode(m Unmarshaler) error {
 	size, err := d.decodeSize()
 	if err != nil {
+		d.resettableReader.Reset(d.reader)
 		return err
 	}
 	if size > d.maxMessageSize {

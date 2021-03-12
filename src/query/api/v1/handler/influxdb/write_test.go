@@ -23,6 +23,7 @@ package influxdb
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -142,8 +143,9 @@ func makeOptions(ds ingest.DownsamplerAndWriter) options.HandlerOptions {
 		SetDownsamplerAndWriter(ds)
 }
 
-func makeInfluxDBLineProtocolMessage(isGzipped bool) io.Reader {
-	line := "weather,location=us-midwest,season=summer temperature=82 1465839830100400200"
+func makeInfluxDBLineProtocolMessage(isGzipped bool, t time.Time, precision time.Duration) io.Reader {
+	ts := fmt.Sprintf("%d", int64(t.UnixNano()/precision.Nanoseconds()))
+	line := fmt.Sprintf("weather,location=us-midwest,season=summer temperature=82 %s", ts)
 	var msg bytes.Buffer
 	if isGzipped {
 		gz := gzip.NewWriter(&msg)
@@ -203,11 +205,82 @@ func TestInfluxDBWrite(t *testing.T) {
 			opts := makeOptions(mockDownsamplerAndWriter)
 			handler := NewInfluxWriterHandler(opts)
 
-			msg := makeInfluxDBLineProtocolMessage(testCase.isGzipped)
+			msg := makeInfluxDBLineProtocolMessage(testCase.isGzipped, time.Now(), time.Nanosecond)
 			req := httptest.NewRequest(InfluxWriteHTTPMethod, InfluxWriteURL, msg)
 			for header, value := range testCase.requestHeaders {
 				req.Header.Set(header, value)
 			}
+			writer := httptest.NewRecorder()
+			handler.ServeHTTP(writer, req)
+			resp := writer.Result()
+			require.Equal(t, testCase.expectedStatus, resp.StatusCode)
+		})
+	}
+}
+
+func TestInfluxDBWritePrecision(t *testing.T) {
+	tests := []struct {
+		name           string
+		expectedStatus int
+		precision      string
+	}{
+		{
+			name:           "No precision",
+			expectedStatus: http.StatusNoContent,
+			precision:      "",
+		},
+		{
+			name:           "Millisecond precision",
+			expectedStatus: http.StatusNoContent,
+			precision:      "ms",
+		},
+		{
+			name:           "Second precision",
+			expectedStatus: http.StatusNoContent,
+			precision:      "s",
+		},
+	}
+
+	ctrl := xtest.NewController(t)
+	defer ctrl.Finish()
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(tt *testing.T) {
+			var precision time.Duration
+			switch testCase.precision {
+			case "":
+				precision = time.Nanosecond
+			case "ms":
+				precision = time.Millisecond
+			case "s":
+				precision = time.Second
+			}
+
+			now := time.Now()
+
+			mockDownsamplerAndWriter := ingest.NewMockDownsamplerAndWriter(ctrl)
+			mockDownsamplerAndWriter.
+				EXPECT().
+				WriteBatch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(
+				_ context.Context,
+				iter *ingestIterator,
+				opts ingest.WriteOptions,
+			) interface{} {
+				require.Equal(tt, now.Truncate(precision).UnixNano(), iter.points[0].UnixNano(), "correct precision")
+				return nil
+			}).Times(1)
+
+			opts := makeOptions(mockDownsamplerAndWriter)
+			handler := NewInfluxWriterHandler(opts)
+
+			var msg = makeInfluxDBLineProtocolMessage(false, now, precision)
+			var url string
+			if testCase.precision == "" {
+				url = InfluxWriteURL
+			} else {
+				url = InfluxWriteURL + fmt.Sprintf("?precision=%s", testCase.precision)
+			}
+			req := httptest.NewRequest(InfluxWriteHTTPMethod, url, msg)
 			writer := httptest.NewRecorder()
 			handler.ServeHTTP(writer, req)
 			resp := writer.Result()

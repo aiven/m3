@@ -104,13 +104,11 @@ func (c *Configuration) NewOptions(iOpts instrument.Options, rwOpts xio.Options)
 	switch opts.Compression() {
 	case xio.SnappyCompression:
 		rwOpts = rwOpts.
-			SetResettableReaderFn(xio.SnappyResettableReaderFn()).
-			SetResettableWriterFn(xio.SnappyResettableWriterFn())
+			SetResettableReaderFn(xio.SnappyResettableReaderFn())
 	}
 
 	opts = opts.
-		SetDecoderOptions(opts.DecoderOptions().SetRWOptions(rwOpts)).
-		SetEncoderOptions(opts.EncoderOptions().SetRWOptions(rwOpts))
+		SetDecoderOptions(opts.DecoderOptions().SetRWOptions(rwOpts))
 
 	return opts
 }

@@ -1,0 +1,100 @@
+{
+    "coordinator": {
+	"listenAddress": "0.0.0.0:17202",
+	"metrics": {
+            "extended": "none",
+            "prometheus": {
+		"handlerPath": "/metrics",
+		"listenAddress": "0.0.0.0:17204"
+            },
+            "samplingRate": 1,
+            "sanitization": "prometheus",
+            "scope": {
+		"prefix": "m3coordinator"
+	    }
+	}
+    },
+    "db": {
+	"metrics": {
+            "extended": "none",
+            "prometheus": {
+		"handlerPath": "/metrics",
+		"listenAddress": "0.0.0.0:17205"
+            },
+            "samplingRate": 1,
+            "sanitization": "prometheus",
+            "scope": {
+		"prefix": "m3db"
+	    }
+	},
+        "bootstrap": {
+            "commitlog": {
+                "returnUnfulfilledForCorruptCommitLogFiles": false
+            },
+            "mode": "default",
+            "peers": {
+                "streamPersistShardConcurrency": 1,
+                "streamPersistShardFlushConcurrency": 1,
+                "streamShardConcurrency": 2
+            }
+        },
+        "cache": {
+            "postingsList": {
+                "size": 262144
+            },
+            "series": {
+                "policy": "lru"
+            }
+        },
+        "client": {
+            "readConsistencyLevel": "unstrict_majority",
+            "writeConsistencyLevel": "majority"
+        },
+        "clusterListenAddress": "0.0.0.0:17502",
+        "commitlog": {
+            "flushEvery": "1s",
+            "flushMaxBytes": 524288,
+            "queue": {
+                "calculationType": "fixed",
+                "size": 2097152
+            }
+        },
+        "debugListenAddress": "0.0.0.0:19004",
+        "discovery": {
+            "config": {
+                "service": {
+                    "env": "default_env",
+                    "etcdClusters": [
+                        {
+                            "endpoints": [
+                                "http://etcd0:23790"
+                            ],
+                            "zone": "embedded"
+                        }
+                    ],
+                    "service": "m3db",
+                    "zone": "embedded"
+                }
+            }
+        },
+        "filesystem": {
+            "filePathPrefix": "/srv/m3/data"
+        },
+        "gcPercentage": 25,
+        "hostID": {
+            "resolver": "config",
+            "value": "m3db-1"
+        },
+        "httpClusterListenAddress": "0.0.0.0:19003",
+        "httpNodeListenAddress": "0.0.0.0:19002",
+        "limits": {
+            "writeNewSeriesPerSecond": 1048576
+        },
+        "listenAddress": "0.0.0.0:19000",
+        "logging": {
+            "level": "info"
+        },
+        "writeNewSeriesAsync": true,
+        "writeNewSeriesBackoffDuration": "2ms"
+    }
+}

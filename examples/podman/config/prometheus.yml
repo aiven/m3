@@ -1,0 +1,24 @@
+global:
+  scrape_interval:     15s # By default, scrape targets every 15 seconds.
+
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 30s
+
+    static_configs:
+      - targets:
+        - 'm3db1:17204' # co-located m3coordinator
+        - 'm3db1:17205' # m3db
+        - 'm3db2:27204' # co-located m3coordinator
+        - 'm3db2:27205' # m3db
+        - 'm3coordinator1:17203'
+        - 'm3coordinator2:27203'
+        - 'm3aggregator1:17207'
+        - 'm3aggregator2:27207'
+
+remote_write:
+  - url: "http://m3coordinator1:17201/api/v1/prom/remote/write"
+  - url: "http://m3coordinator2:27201/api/v1/prom/remote/write"

@@ -1,0 +1,96 @@
+{
+    "clusters": [
+	{
+	    "client": {
+		"config": {
+		    "service": {
+			"env": "default_env",
+                        "etcdClusters": [
+                            {
+                                "endpoints": [
+                                    "http://etcd0:23790"
+                                ],
+                                "zone": "embedded"
+                            }
+                        ],
+                        "service": "m3db",
+                        "zone": "embedded"
+                    }
+                },
+                "readConsistencyLevel": "unstrict_majority",
+                "writeConsistencyLevel": "majority"
+            }
+	}
+    ],
+    "downsample": {
+        "remoteAggregator": {
+            "client": {
+                "m3msg": {
+                    "producer": {
+                        "writer": {
+                            "connection": {
+                                "numConnections": 4
+                            },
+                            "messagePool": {
+                                "size": 0
+                            },
+                            "placement": {
+                                "isStaged": true
+                            },
+                            "placementServiceOverride": {
+                                "namespaces": {
+                                    "placement": "/placement"
+                                }
+                            },
+                            "topicName": "aggregator_ingest",
+                            "topicServiceOverride": {
+                                "environment": "default_env",
+                                "zone": "embedded"
+                            }
+                        }
+                    }
+                },
+                "type": "m3msg"
+            }
+        },
+        "rules": {
+            "mappingRules": [],
+            "rollupRules": []
+        }
+    },
+    "ingest": {
+        "ingester": {
+            "logSampleRate": 0.01,
+            "opPool": {
+                "size": 0
+            },
+            "retry": {
+                "jitter": true,
+                "maxRetries": 3
+            },
+            "workerPoolSize": 10000
+        },
+        "m3msg": {
+            "server": {
+                "listenAddress": "0.0.0.0:27507",
+                "retry": {
+                    "jitter": true,
+                    "maxBackoff": "10s"
+                }
+            }
+        }
+    },
+    "listenAddress": "0.0.0.0:27201",
+    "metrics": {
+        "extended": "none",
+        "prometheus": {
+            "handlerPath": "/metrics",
+            "listenAddress": "0.0.0.0:27203"
+        },
+        "samplingRate": 1,
+        "sanitization": "prometheus",
+        "scope": {
+            "prefix": "m3coordinator"
+	}
+    }
+}

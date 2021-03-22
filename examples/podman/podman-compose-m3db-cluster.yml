@@ -1,0 +1,173 @@
+version: "3.9"
+services:
+  etcd0:
+    image: quay.io/coreos/etcd
+    ports:
+      - 2379:23790
+    volumes:
+      - etcd0:/etcd_data
+    command:
+      - /usr/local/bin/etcd
+      - -name
+      - etcd0
+      - --data-dir
+      - /etcd_data
+      - -advertise-client-urls
+      - http://etcd0:23790
+      - -listen-client-urls
+      - http://0.0.0.0:23790
+      - -initial-advertise-peer-urls
+      - http://etcd0:23800
+      - -listen-peer-urls
+      - http://0.0.0.0:23800
+      - -initial-cluster
+      - etcd0=http://etcd0:23800,etcd1=http://etcd1:23801,etcd2=http://etcd2:23802
+  etcd1:
+    image: quay.io/coreos/etcd
+    ports:
+      - 23791
+    volumes:
+      - etcd1:/etcd_data
+    command:
+      - /usr/local/bin/etcd
+      - -name
+      - etcd1
+      - --data-dir
+      - /etcd_data
+      - -advertise-client-urls
+      - http://etcd1:23791
+      - -listen-client-urls
+      - http://0.0.0.0:23791
+      - -initial-advertise-peer-urls
+      - http://etcd1:23801
+      - -listen-peer-urls
+      - http://0.0.0.0:23801
+      - -initial-cluster
+      - etcd0=http://etcd0:23800,etcd1=http://etcd1:23801,etcd2=http://etcd2:23802
+  etcd2:
+    image: quay.io/coreos/etcd
+    ports:
+      - 23792
+    volumes:
+      - etcd2:/etcd_data
+    command:
+      - /usr/local/bin/etcd
+      - -name
+      - etcd2
+      - --data-dir
+      - /etcd_data
+      - -advertise-client-urls
+      - http://etcd2:23792
+      - -listen-client-urls
+      - http://0.0.0.0:23792
+      - -initial-advertise-peer-urls
+      - http://etcd2:23802
+      - -listen-peer-urls
+      - http://0.0.0.0:23802
+      - -initial-cluster
+      - etcd0=http://etcd0:23800,etcd1=http://etcd1:23801,etcd2=http://etcd2:23802
+  m3db1:
+    image: m3dbnode:latest
+    ports:
+      - 9000-9004:19000-19004
+      - 17502
+      - 17204
+      - 7201:17202
+      - 17205
+    environment:
+      - CONFIG_FILE=m3db.1.json
+    depends_on:
+      - etcd0
+      - etcd1
+      - etcd2
+    volumes:
+      - ./config:/etc/m3dbnode:z
+      - m3_data1:/srv/m3/data
+  m3db2:
+    image: m3dbnode:latest
+    ports:
+      - 29000-29004
+      - 27502
+      - 27204
+      - 27202
+      - 27205
+    environment:
+      - CONFIG_FILE=m3db.2.json
+    depends_on:
+      - etcd0
+      - etcd1
+      - etcd2
+    volumes:
+      - ./config:/etc/m3dbnode:z
+      - m3_data2:/srv/m3/data
+  m3coordinator1:
+    image: m3coordinator:latest
+    ports:
+      - 17201:17201
+      - 7203:17203
+      - 17507:17507
+    environment:
+      - CONFIG_FILE=m3coordinator.1.json
+    depends_on:
+      - etcd0
+      - etcd1
+      - etcd2
+      - m3db1
+      - m3db2
+    volumes:
+      - ./config:/etc/m3coordinator:z
+  m3coordinator2:
+    image: m3coordinator:latest
+    ports:
+      - 27201
+      - 27203
+      - 27507:27507
+    environment:
+      - CONFIG_FILE=m3coordinator.2.json
+    depends_on:
+      - etcd0
+      - etcd1
+      - etcd2
+      - m3db1
+      - m3db2
+    volumes:
+      - ./config:/etc/m3coordinator:z
+  m3aggregator1:
+    image: m3aggregator:latest
+    ports:
+      - 16000:16000
+      - 16001
+      - 17207
+    volumes:
+      - ./config:/etc/m3aggregator:z
+    environment:
+      - CONFIG=m3aggregator.1.json
+    depends_on:
+      - m3coordinator1
+      - m3coordinator2
+  m3aggregator2:
+    image: m3aggregator:latest
+    ports:
+      - 26000:26000
+      - 26001
+      - 27207
+    volumes:
+      - ./config:/etc/m3aggregator:z
+    environment:
+      - CONFIG=m3aggregator.2.json
+    depends_on:
+      - m3coordinator1
+      - m3coordinator2
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - 9090:9090
+    volumes:
+      - ./config:/etc/prometheus:z
+
+volumes:
+    etcd0:
+    etcd1:
+    etcd2:
+    m3_data1:
+    m3_data2:

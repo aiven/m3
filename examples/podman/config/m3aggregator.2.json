@@ -1,0 +1,264 @@
+{
+    "aggregator": {
+        "aggregationTypes": {
+            "aggregationTypesPool": {
+                "size": 255
+            },
+            "counterTransformFnType": "empty",
+            "gaugeTransformFnType": "empty",
+            "timerTransformFnType": "suffix"
+        },
+        "bufferDurationAfterShardCutoff": "10m",
+        "bufferDurationBeforeShardCutover": "60m",
+        "bufferDurationForFutureTimedMetric": "10m",
+        "bufferDurationForPastTimedMetric": "300s",
+        "client": {
+            "m3msg": {
+                "producer": {
+                    "writer": {
+                        "messagePool": {
+                            "size": 0
+                        },
+                        "placement": {
+                            "isStaged": true
+                        },
+                        "placementServiceOverride": {
+                            "namespaces": {
+                                "placement": "/placement"
+                            }
+                        },
+                        "topicName": "aggregator_ingest",
+                        "topicServiceOverride": {
+                            "environment": "default_env",
+                            "zone": "embedded"
+                        }
+                    }
+                }
+            },
+            "type": "m3msg"
+        },
+        "counterElemPool": {
+            "size": 255
+        },
+        "counterPrefix": "",
+        "defaultStoragePolicies": [],
+        "discardNaNAggregatedValues": true,
+        "electionManager": {
+            "campaignRetrier": {
+                "backoffFactor": 2.0,
+                "forever": true,
+                "initialBackoff": "100ms",
+                "jitter": true,
+                "maxBackoff": "2s"
+            },
+            "campaignStateCheckInterval": "1s",
+            "changeRetrier": {
+                "backoffFactor": 2.0,
+                "forever": true,
+                "initialBackoff": "100ms",
+                "jitter": true,
+                "maxBackoff": "5s"
+            },
+            "election": {
+                "leaderTimeout": "10s",
+                "resignTimeout": "10s",
+                "ttlSeconds": 10
+            },
+            "electionKeyFmt": "shardset/%d/lock",
+            "resignRetrier": {
+                "backoffFactor": 2.0,
+                "forever": true,
+                "initialBackoff": "100ms",
+                "jitter": true,
+                "maxBackoff": "5s"
+            },
+            "serviceID": {
+                "environment": "default_env",
+                "name": "m3aggregator",
+                "zone": "embedded"
+            },
+            "shardCutoffCheckOffset": "30s"
+        },
+        "entryCheckInterval": "10m",
+        "entryPool": {
+            "size": 255
+        },
+        "entryTTL": "1h",
+        "flush": {
+            "handlers": [
+                {
+                    "dynamicBackend": {
+                        "hashType": "murmur32",
+                        "name": "m3msg",
+                        "producer": {
+                            "buffer": {
+                                "maxBufferSize": 1000000000
+                            },
+                            "writer": {
+                                "messagePool": {
+                                    "size": 0
+                                },
+                                "topicName": "aggregator_metrics",
+                                "topicServiceOverride": {
+                                    "environment": "default_env",
+                                    "zone": "embedded"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "flushManager": {
+            "checkEvery": "1s",
+            "flushTimesPersistEvery": "10s",
+            "forcedFlushWindowSize": "10s",
+            "jitterEnabled": true,
+            "maxBufferSize": "5m",
+            "maxJitters": [
+                {
+                    "flushInterval": "5s",
+                    "maxJitterPercent": 1.0
+                },
+                {
+                    "flushInterval": "10s",
+                    "maxJitterPercent": 0.5
+                },
+                {
+                    "flushInterval": "1m",
+                    "maxJitterPercent": 0.5
+                },
+                {
+                    "flushInterval": "10m",
+                    "maxJitterPercent": 0.5
+                },
+                {
+                    "flushInterval": "1h",
+                    "maxJitterPercent": 0.25
+                }
+            ],
+            "numWorkersPerCPU": 0.5
+        },
+        "flushTimesManager": {
+            "flushTimesKeyFmt": "shardset/%d/flush",
+            "flushTimesPersistRetrier": {
+                "backoffFactor": 2.0,
+                "initialBackoff": "100ms",
+                "maxBackoff": "2s",
+                "maxRetries": 3
+            },
+            "kvConfig": {
+                "environment": "default_env",
+                "zone": "embedded"
+            }
+        },
+        "forwarding": {
+            "maxConstDelay": "5m"
+        },
+        "gaugeElemPool": {
+            "size": 255
+        },
+        "gaugePrefix": "",
+        "hashType": "murmur32",
+        "hostID": {
+            "resolver": "config",
+            "value": "m3aggregator-2"
+        },
+        "instanceID": {
+            "type": "host_id"
+        },
+        "maxNumCachedSourceSets": 2,
+        "maxTimerBatchSizePerWrite": 140,
+        "metricPrefix": "",
+        "passthrough": {
+            "enabled": true
+        },
+        "placementManager": {
+            "kvConfig": {
+                "environment": "default_env",
+                "namespace": "/placement",
+                "zone": "embedded"
+            },
+            "placementWatcher": {
+                "initWatchTimeout": "10s",
+                "key": "m3aggregator"
+            }
+        },
+        "resignTimeout": "1m",
+        "stream": {
+            "capacity": 32,
+            "eps": 0.001,
+            "samplePool": {
+                "size": 255
+            },
+            "streamPool": {
+                "size": 255
+            }
+        },
+        "timerElemPool": {
+            "size": 255
+        },
+        "timerPrefix": "",
+        "verboseErrors": true
+    },
+    "http": {
+        "listenAddress": "0.0.0.0:26001",
+        "readTimeout": "60s",
+        "writeTimeout": "60s"
+    },
+    "kvClient": {
+        "etcd": {
+            "env": "default_env",
+            "etcdClusters": [
+                {
+                    "endpoints": [
+                        "http://etcd0:23790"
+                    ],
+                    "zone": "embedded"
+                }
+            ],
+            "service": "m3aggregator",
+            "zone": "embedded"
+        }
+    },
+    "logging": {
+        "level": "debug"
+    },
+    "metrics": {
+	"scope": {
+            "prefix": "m3aggregator",
+        },
+        "prometheus": {
+            "handlerPath": "/metrics",
+            "listenAddress": "0.0.0.0:27207",
+        },
+        "sanitization": "prometheus",
+        "samplingRate": 1,
+        "extended": "none"
+    },
+    "m3msg": {
+        "consumer": {
+            "messagePool": {
+                "size": 0
+            }
+        },
+        "server": {
+            "listenAddress": "0.0.0.0:26000",
+            "retry": {
+                "jitter": true,
+                "maxBackoff": "10s"
+            }
+        }
+    },
+    "runtimeOptions": {
+        "kvConfig": {
+            "environment": "default_env",
+            "zone": "embedded"
+        },
+        "writeNewMetricLimitClusterPerSecond": 0,
+        "writeNewMetricLimitClusterPerSecondKey": "write-new-metric-limit-cluster-per-second",
+        "writeNewMetricNoLimitWarmupDuration": 0,
+        "writeValuesPerMetricLimitPerSecond": 0,
+        "writeValuesPerMetricLimitPerSecondKey": "write-values-per-metric-limit-per-second"
+    }
+}

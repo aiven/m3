@@ -184,10 +184,12 @@ func (c *WriterConfiguration) NewOptions(
 	switch opts.ConnectionOptions().Compression() {
 	case xio.SnappyCompression:
 		rwOptions = rwOptions.
+			SetResettableReaderFn(xio.SnappyResettableReaderFn()).
 			SetResettableWriterFn(xio.SnappyResettableWriterFn())
 	}
 
 	opts = opts.
+		SetDecoderOptions(opts.DecoderOptions().SetRWOptions(rwOptions)).
 		SetEncoderOptions(opts.EncoderOptions().SetRWOptions(rwOptions))
 
 	return opts, nil

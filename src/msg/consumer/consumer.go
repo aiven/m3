@@ -29,6 +29,7 @@ import (
 	"github.com/m3db/m3/src/msg/protocol/proto"
 	"github.com/m3db/m3/src/x/clock"
 	xio "github.com/m3db/m3/src/x/io"
+	xnet "github.com/m3db/m3/src/x/net"
 
 	"github.com/uber-go/tally"
 )
@@ -119,14 +120,16 @@ func newConsumer(
 		writerFn = rwOpts.ResettableWriterFn()
 	)
 
+	snappyWrappedConn := xnet.NewSnappyConnection(conn)
+
 	return &consumer{
 		opts:    opts,
 		mPool:   mPool,
 		encoder: proto.NewEncoder(opts.EncoderOptions()),
 		decoder: proto.NewDecoder(
-			conn, opts.DecoderOptions(), opts.ConnectionReadBufferSize(),
+			snappyWrappedConn, opts.DecoderOptions(), opts.ConnectionReadBufferSize(),
 		),
-		w:      writerFn(newConnWithTimeout(conn, opts.ConnectionWriteTimeout(), time.Now), wOpts),
+		w:      writerFn(newConnWithTimeout(snappyWrappedConn, opts.ConnectionWriteTimeout(), time.Now), wOpts),
 		conn:   conn,
 		closed: false,
 		doneCh: make(chan struct{}),
@@ -268,15 +271,17 @@ func resetProto(m *msgpb.Message) {
 type connWithTimeout struct {
 	net.Conn
 
-	timeout time.Duration
-	nowFn   clock.NowFn
+	timeout        time.Duration
+	nowFn          clock.NowFn
+	useCompression bool
 }
 
 func newConnWithTimeout(conn net.Conn, timeout time.Duration, nowFn clock.NowFn) connWithTimeout {
 	return connWithTimeout{
-		Conn:    conn,
-		timeout: timeout,
-		nowFn:   nowFn,
+		Conn:           conn,
+		timeout:        timeout,
+		nowFn:          nowFn,
+		useCompression: true,
 	}
 }
 

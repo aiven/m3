@@ -32,6 +32,7 @@ import (
 	"github.com/m3db/m3/src/msg/protocol/proto"
 	"github.com/m3db/m3/src/x/clock"
 	xio "github.com/m3db/m3/src/x/io"
+	xnet "github.com/m3db/m3/src/x/net"
 	"github.com/m3db/m3/src/x/retry"
 
 	"github.com/uber-go/tally"
@@ -464,7 +465,8 @@ func (w *consumerWriterImpl) connectNoRetry(addr string) (io.ReadWriteCloser, er
 	if err = tcpConn.SetKeepAlivePeriod(keepAlivePeriod); err != nil {
 		w.m.setKeepAlivePeriodError.Inc(1)
 	}
-	return newReadWriterWithTimeout(conn, w.connOpts.WriteTimeout(), w.nowFn), nil
+	snappyConn := xnet.NewSnappyConnection(conn)
+	return newReadWriterWithTimeout(snappyConn, w.connOpts.WriteTimeout(), w.nowFn), nil
 }
 
 type connectOptions struct {

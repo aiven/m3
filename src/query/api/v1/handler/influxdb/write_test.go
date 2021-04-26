@@ -35,6 +35,7 @@ import (
 	imodels "github.com/influxdata/influxdb/models"
 	"github.com/m3db/m3/src/cmd/services/m3coordinator/ingest"
 	"github.com/m3db/m3/src/query/api/v1/options"
+	"github.com/m3db/m3/src/query/models"
 	xtest "github.com/m3db/m3/src/x/test"
 	xtime "github.com/m3db/m3/src/x/time"
 	"github.com/stretchr/testify/assert"
@@ -128,6 +129,31 @@ func TestIngestIteratorIssue2125(t *testing.T) {
 	assert.Equal(t, value2.Tags.String(), "__name__: measure_k2, lab: foo")
 }
 
+func TestIngestIteratorWriteTags(t *testing.T) {
+	s := `measure,lab=foo k1=1,k2=2 1574838670386469800
+`
+	points, err := imodels.ParsePoints([]byte(s))
+	require.NoError(t, err)
+
+	writeTags := models.EmptyTags().
+		AddTag(models.Tag{Name: []byte("lab"), Value: []byte("bar")}).
+		AddTag(models.Tag{Name: []byte("new"), Value: []byte("tag")})
+
+	iter := &ingestIterator{points: points, promRewriter: newPromRewriter(), writeTags: writeTags}
+
+	assert.True(t, iter.Next())
+	value1 := iter.Current()
+	require.NoError(t, iter.Error())
+
+	assert.Equal(t, value1.Tags.String(), "__name__: measure_k1, lab: bar, new: tag")
+
+	assert.True(t, iter.Next())
+	value2 := iter.Current()
+	require.NoError(t, iter.Error())
+
+	assert.Equal(t, value2.Tags.String(), "__name__: measure_k2, lab: bar, new: tag")
+}
+
 func TestDetermineTimeUnit(t *testing.T) {
 	now := time.Now()
 	zerot := now.Add(time.Duration(-now.UnixNano() % int64(time.Second)))
@@ -186,6 +212,14 @@ func TestInfluxDBWrite(t *testing.T) {
 			isGzipped:      false,
 			requestHeaders: map[string]string{},
 		},
+		{
+			name:           "Map-Tags-JSON Add Tag",
+			expectedStatus: http.StatusNoContent,
+			isGzipped:      false,
+			requestHeaders: map[string]string{
+				"M3-Map-Tags-JSON": `{"tagMappers": [{"write": {"tag": "t", "value": "v"}}]}`,
+			},
+		},
 	}
 
 	ctrl := xtest.NewController(t)
@@ -195,8 +229,22 @@ func TestInfluxDBWrite(t *testing.T) {
 		t.Run(testCase.name, func(tt *testing.T) {
 
 			mockDownsamplerAndWriter := ingest.NewMockDownsamplerAndWriter(ctrl)
-			// For error reponses we don't expect WriteBatch to be called
-			if testCase.expectedStatus != http.StatusBadRequest {
+
+			if testCase.name == "Map-Tags-JSON Add Tag" {
+				// We verify that the required tags have been added
+				mockDownsamplerAndWriter.
+					EXPECT().
+					WriteBatch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(
+					_ context.Context,
+					iter *ingestIterator,
+					opts ingest.WriteOptions,
+				) interface{} {
+					_, found := iter.writeTags.Get([]byte("t"))
+					require.True(t, found, "tag t will be overwritten")
+					return nil
+				}).Times(1)
+			} else if testCase.expectedStatus != http.StatusBadRequest {
+				// For error reponses we don't expect WriteBatch to be called
 				mockDownsamplerAndWriter.
 					EXPECT().
 					WriteBatch(gomock.Any(), gomock.Any(), gomock.Any())
